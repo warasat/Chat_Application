@@ -30,7 +30,3 @@ export const loginUserService = async (phoneNumber) => {
     message: "Login successful",
   };
 };
-
-export const getAllUsersService = async () => {
-  return await User.find({}, "username phoneNumber _id profilePic bio");
-};

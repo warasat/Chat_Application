@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import API from "../services/api";
 import type { User } from "../types/user";
 
-// 1. Interface ko update kiya (Sab actions yahan define hona zaroori hain)
+// 1. Interface: addContactAction ab 'contact' bhi return karega
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -17,7 +17,7 @@ interface AuthContextType {
   addContactAction: (
     currentUserId: string,
     phoneNumber: string
-  ) => Promise<{ success: boolean; message?: string }>;
+  ) => Promise<{ success: boolean; message?: string; contact?: User }>;
   logout: () => void;
 }
 
@@ -25,8 +25,8 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); // Initial app load
-  const [authLoading, setAuthLoading] = useState(false); // API calls loading
+  const [loading, setLoading] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
@@ -78,18 +78,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Add Contact Action
   const addContactAction = async (
     currentUserId: string,
     phoneNumber: string
   ) => {
     setAuthLoading(true);
     try {
-      const res = await API.post("/auth/add-contact", {
+      const res = await API.post("/users/add-contact", {
         phoneNumber,
         currentUserId,
       });
-      return { success: true, message: res.data.message };
+
+      return {
+        success: true,
+        message: res.data.message,
+        contact: res.data.contact,
+      };
     } catch (err: any) {
       const errorMsg =
         err.response?.data?.message || "User not found in database";

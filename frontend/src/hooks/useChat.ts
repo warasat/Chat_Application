@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { io, Socket } from "socket.io-client";
+import { useState, useEffect } from "react";
+import socket from "../services/socket"; // Central socket use karein
 import API from "../services/api";
 import type { Message } from "../types/message";
 
@@ -10,35 +10,45 @@ export const useChat = (
 ) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isOnline, setIsOnline] = useState(false);
-  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    socketRef.current = io("http://localhost:5000");
-    const socket = socketRef.current;
+    if (!chatId || !currentUserId) return;
 
-    // Fetch History
-    API.get(`/messages/${chatId}`).then((res) =>
-      setMessages(res.data.reverse())
+    // History Fetch karein
+    API.get(`/messages/${chatId}`).then(
+      (res) => setMessages(res.data) // reverse() backend handle kare toh behtar hai
     );
 
+    // Session set karein
     socket.emit("set_session", { chatId, senderId: currentUserId });
 
-    socket.on("receive_message", (m: Message) => {
-      if (m.sender_id !== currentUserId) setMessages((prev) => [...prev, m]);
-    });
+    // Message receive listener
+    const handleReceiveMessage = (m: Message) => {
+      // Sirf isi chat ke message add karein
+      setMessages((prev) => [...prev, m]);
+    };
+
+    socket.on("receive_message", handleReceiveMessage);
 
     socket.on("user_status", (data) => {
       if (data.userId === receiverId) setIsOnline(data.status === "online");
     });
 
     return () => {
-      socket.disconnect();
+      socket.off("receive_message", handleReceiveMessage);
+      socket.off("user_status");
     };
   }, [chatId, currentUserId, receiverId]);
 
-  const sendMessage = (content: string, type: "text" | "audio") => {
-    const newMsg: Message = { sender_id: currentUserId, content, type };
-    socketRef.current?.emit("message", newMsg);
+  const sendMessage = (content: string, type: "text" | "audio" = "text") => {
+    const newMsg: Message = {
+      sender_id: currentUserId,
+      content,
+      type,
+      chat_id: chatId, // chatId lazmi bhejein taake backend ko pata chale kis room mein bhejna hai
+    };
+
+    socket.emit("message", newMsg);
     setMessages((prev) => [...prev, newMsg]);
   };
 

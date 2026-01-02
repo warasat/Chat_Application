@@ -2,10 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Mic, Square, Plus } from "lucide-react";
 import { useChat } from "../hooks/useChat";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
-import { useAuth } from "../context/AuthContext";
+
 import type { User } from "../types/user";
 import type { Message } from "../types/message";
-import AddContactModal from "../components/AddContatctModal";
 
 interface ChatPageProps {
   chatId: string;
@@ -15,10 +14,7 @@ interface ChatPageProps {
 
 const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
   const [input, setInput] = useState("");
-  const [showAddContact, setShowAddContact] = useState(false);
-  const [newContactPhone, setNewContactPhone] = useState("");
 
-  const { addContactAction, authLoading } = useAuth();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // 1. Chat Logic Hook
@@ -43,18 +39,6 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     if (!input.trim()) return;
     sendMessage(input, "text");
     setInput("");
-  };
-
-  const handleAddContact = async () => {
-    if (!newContactPhone) return alert("Please enter a phone number");
-    const result = await addContactAction(currentUserId, newContactPhone);
-
-    alert(result.message);
-    if (result.success) {
-      setShowAddContact(false);
-      setNewContactPhone("");
-      window.location.reload(); // Sidebar ko refresh karne ke liye
-    }
   };
 
   return (
@@ -90,10 +74,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
       {/* INPUT AREA */}
       <div className="p-3 bg-white flex items-center gap-2 border-t">
         {/* ADD CONTACT (+) BUTTON */}
-        <button
-          onClick={() => setShowAddContact(true)}
-          className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors cursor-pointer"
-        >
+        <button className="p-2 text-gray-500 hover:bg-gray-100 rounded-full transition-colors cursor-pointer">
           <Plus size={24} />
         </button>
 
@@ -126,16 +107,6 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
           <Send size={22} />
         </button>
       </div>
-
-      {/* ADD CONTACT MODAL */}
-      <AddContactModal
-        isOpen={showAddContact}
-        onClose={() => setShowAddContact(false)}
-        phoneNumber={newContactPhone}
-        setPhoneNumber={setNewContactPhone}
-        onAdd={handleAddContact}
-        isLoading={authLoading}
-      />
     </div>
   );
 };
