@@ -15,9 +15,11 @@ export const useChat = (
     if (!chatId || !currentUserId) return;
 
     // History Fetch karein
-    API.get(`/messages/${chatId}`).then(
-      (res) => setMessages(res.data) // reverse() backend handle kare toh behtar hai
-    );
+    API.get(`/messages/${chatId}`).then((res) => {
+      // Agar API latest message pehle bhej rahi hai, toh reverse karein
+      const history = Array.isArray(res.data) ? res.data.reverse() : [];
+      setMessages(history);
+    });
 
     // Session set karein
     socket.emit("set_session", { chatId, senderId: currentUserId });

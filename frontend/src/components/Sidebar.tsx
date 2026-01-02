@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useUsers } from "../hooks/useUser";
 import type { User } from "../types/user";
 import { Plus } from "lucide-react";
 import AddContactModal from "./AddContatctModal";
+import socket from "../services/socket"; // Socket import karein
 
 interface SidebarProps {
   onSelectUser: (user: User) => void;
@@ -17,6 +18,25 @@ const Sidebar = ({ onSelectUser }: SidebarProps) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [newPhone, setNewPhone] = useState("");
+  useEffect(() => {
+    if (!loginUser?._id) return;
+
+    // Listen for when someone else adds you
+    socket.on("new_contact_added", (newContact: User) => {
+      setUsers((prev) => {
+        // Check if already in list
+        const exists = prev.find((u) => u._id === newContact._id);
+        if (exists) return prev;
+
+        // Add to the top of the list
+        return [newContact, ...prev];
+      });
+    });
+
+    return () => {
+      socket.off("new_contact_added");
+    };
+  }, [loginUser?._id, setUsers]);
 
   const handleAddNewContact = async () => {
     if (!loginUser?._id || !newPhone) return;

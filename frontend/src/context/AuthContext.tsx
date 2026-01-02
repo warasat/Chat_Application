@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import API from "../services/api";
 import type { User } from "../types/user";
+import socket from "../services/socket";
 
 // 1. Interface: addContactAction ab 'contact' bhi return karega
 interface AuthContextType {
@@ -50,6 +51,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       localStorage.setItem("user", JSON.stringify(userData));
       localStorage.setItem("token", token);
       setUser(userData);
+
+      // 🔗 NEW: Register socket session for this user
+      socket.emit("set_session", { senderId: userData._id });
+      console.log("🔗 Socket session registered for user:", userData._id);
 
       return { success: true };
     } catch (err: any) {
