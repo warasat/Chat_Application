@@ -8,6 +8,7 @@ import { connectCassandra } from "./config/cassandra.js";
 import authRoutes from "./routes/auth.route.js";
 import userRoutes from "./routes/user.route.js";
 import messageRoutes from "./routes/message.route.js";
+import notificationRoutes from "./routes/notificaton.route.js";
 
 dotenv.config();
 
@@ -24,6 +25,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend of chat Running with MongoDB & Cassandra...");

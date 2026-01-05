@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import socket from "../services/socket"; // Central socket use karein
+import socket from "../services/socket"; // central socket
 import API from "../services/api";
 import type { Message } from "../types/message";
 
@@ -14,31 +14,35 @@ export const useChat = (
   useEffect(() => {
     if (!chatId || !currentUserId) return;
 
-    // History Fetch karein
+    // --- Fetch chat history ---
     API.get(`/messages/${chatId}`).then((res) => {
-      // Agar API latest message pehle bhej rahi hai, toh reverse karein
       const history = Array.isArray(res.data) ? res.data.reverse() : [];
       setMessages(history);
     });
 
-    // Session set karein
+    // --- Set session ---
     socket.emit("set_session", { chatId, senderId: currentUserId });
 
-    // Message receive listener
+    // --- Request receiver's online status ---
+    socket.emit("get_user_status", { userId: receiverId });
+
+    // --- Receive messages ---
     const handleReceiveMessage = (m: Message) => {
-      // Sirf isi chat ke message add karein
       setMessages((prev) => [...prev, m]);
     };
 
     socket.on("receive_message", handleReceiveMessage);
 
-    socket.on("user_status", (data) => {
+    // --- Receive online/offline status updates ---
+    const handleUserStatus = (data: { userId: string; status: string }) => {
       if (data.userId === receiverId) setIsOnline(data.status === "online");
-    });
+    };
+
+    socket.on("user_status", handleUserStatus);
 
     return () => {
       socket.off("receive_message", handleReceiveMessage);
-      socket.off("user_status");
+      socket.off("user_status", handleUserStatus);
     };
   }, [chatId, currentUserId, receiverId]);
 
@@ -47,7 +51,7 @@ export const useChat = (
       sender_id: currentUserId,
       content,
       type,
-      chat_id: chatId, // chatId lazmi bhejein taake backend ko pata chale kis room mein bhejna hai
+      chat_id: chatId,
     };
 
     socket.emit("message", newMsg);

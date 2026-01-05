@@ -1,4 +1,5 @@
 import User from "../models/user.model.js";
+import Notification from "../models/notification.model.js";
 import { getIO } from "./socket.service.js";
 
 // 1. Get Single User Details
@@ -8,9 +9,7 @@ export const getUserById = async (req, res) => {
       req.params.id,
       "username phoneNumber profilePic bio _id"
     );
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
     res.status(200).json(user);
   } catch (err) {
     console.error("Error in getUserById:", err);
@@ -18,41 +17,54 @@ export const getUserById = async (req, res) => {
   }
 };
 
-// 2. Add Contact with Two-Way Synchronization
+// 2. Add Contact + Notification
 export const addContact = async (req, res) => {
-  let { phoneNumber, currentUserId } = req.body;
+  const { phoneNumber, currentUserId } = req.body;
+
   try {
     const formattedPhone = phoneNumber.startsWith("+")
       ? phoneNumber
       : `+${phoneNumber}`;
 
     const userToAdd = await User.findOne({ phoneNumber: formattedPhone });
-
-    if (!userToAdd) {
+    if (!userToAdd)
       return res
         .status(404)
         .json({ message: `User with ${formattedPhone} not found` });
-    }
 
     const currentUser = await User.findById(currentUserId);
-    if (currentUser.contacts.includes(userToAdd._id)) {
+    if (currentUser.contacts.includes(userToAdd._id))
       return res.status(400).json({ message: "Already in contacts" });
-    }
 
-    // C. MUTUAL UPDATE: Dono users ki array update karein ($addToSet is safer)
-
+    // Mutual update
     await User.findByIdAndUpdate(currentUserId, {
       $addToSet: { contacts: userToAdd._id },
     });
-
-    // Update User B (Recipient - Auto Sync)
     await User.findByIdAndUpdate(userToAdd._id, {
       $addToSet: { contacts: currentUserId },
     });
 
-    // D. SOCKET REAL-TIME TRIGGER: User B ko foran notify karein
+    // 🔥 Create a notification record
+    const message = `${currentUser.username} added you as a contact`;
+    const notification = await Notification.create({
+      receiverId: userToAdd._id,
+      senderId: currentUser._id,
+      type: "contact_added",
+      message,
+    });
+
+    // 🔔 Real-time notification to User B
     const io = getIO();
     if (io) {
+      io.to(userToAdd._id.toString()).emit("contact_added_notification", {
+        _id: notification._id,
+        senderId: currentUser._id,
+        senderName: currentUser.username,
+        message,
+        createdAt: notification.createdAt,
+      });
+
+      // Keep your existing “new_contact_added” so sidebar updates too
       io.to(userToAdd._id.toString()).emit("new_contact_added", {
         _id: currentUser._id,
         username: currentUser.username,
@@ -72,16 +84,14 @@ export const addContact = async (req, res) => {
   }
 };
 
-// 3. Get All Users (Fixed naming to match your route import)
+// 3. Get All Users
 export const getAllUsersService = async (req, res) => {
   try {
     const users = await User.find(
       {},
       "username phoneNumber _id profilePic bio"
     );
-    if (res) {
-      return res.status(200).json(users);
-    }
+    if (res) return res.status(200).json(users);
     return users;
   } catch (err) {
     console.error("Error in getAllUsersService:", err);

@@ -11,22 +11,39 @@ export const initSocket = (server) => {
   io.on("connection", (socket) => {
     console.log(`⚡ Connection Open: ${socket.id}`);
 
+    // --- SESSION SET ---
     socket.on("set_session", (data) => {
       socket.chatId = data.chatId;
       socket.senderId = data.senderId;
 
       if (data.chatId) socket.join(data.chatId);
-      if (data.senderId) socket.join(data.senderId); // join user personal room
+      if (data.senderId) socket.join(data.senderId); // personal room
 
       console.log(
         `✅ Session Set: ${data.senderId} joined Chat ${data.chatId}`
       );
+
+      // 🔹 Emit online to all users (or could be filtered to friends)
+      io.emit("user_status", { userId: data.senderId, status: "online" });
     });
 
+    // --- GET USER STATUS ON REQUEST ---
+    socket.on("get_user_status", ({ userId }) => {
+      // check if any socket has this userId
+      const isOnline = Array.from(io.sockets.sockets.values()).some(
+        (s) => s.senderId === userId
+      );
+      socket.emit("user_status", {
+        userId,
+        status: isOnline ? "online" : "offline",
+      });
+    });
+
+    // --- MESSAGES ---
     socket.on("message", async (data) => {
       const content = typeof data === "string" ? data : data.content;
       const type = data.type || "text";
-      const receiverId = data.receiverId; // 👈 Add this from frontend when sending message
+      const receiverId = data.receiverId;
 
       const msgData = {
         chatId: socket.chatId,
@@ -49,13 +66,13 @@ export const initSocket = (server) => {
         ];
         await cassandraClient.execute(query, params, { prepare: true });
 
-        // Send to everyone in chat room (if exists)
+        // Broadcast to chat room
         socket.to(socket.chatId).emit("receive_message", msgData);
 
-        // 🔥 Also emit directly to receiver personal room
+        // Send directly to receiver
         io.to(receiverId).emit("receive_message", msgData);
 
-        // 👇 Extra: if this is the *first* message, notify receiver sidebar
+        // Notify receiver sidebar for new chat
         io.to(receiverId).emit("new_chat_started", {
           senderId: msgData.senderId,
           lastMessage: msgData.content,
@@ -68,7 +85,13 @@ export const initSocket = (server) => {
       }
     });
 
-    socket.on("disconnect", () => console.log("🔥 Door Closed"));
+    // --- DISCONNECT ---
+    socket.on("disconnect", () => {
+      console.log("🔥 Door Closed");
+      if (socket.senderId) {
+        io.emit("user_status", { userId: socket.senderId, status: "offline" });
+      }
+    });
   });
 
   return io;
