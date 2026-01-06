@@ -84,37 +84,47 @@ const Header = () => {
                   No notifications yet
                 </p>
               ) : (
-                notifications.map((notif) => (
-                  <div
-                    key={notif._id}
-                    onClick={() => markOneAsRead(notif._id)} // ✅ mark as read
-                    className={`group px-4 py-2 border-b border-gray-100 flex justify-between items-start cursor-pointer ${
-                      notif.isRead ? "bg-gray-50" : "bg-white hover:bg-gray-50"
-                    }`}
-                  >
-                    <div className="flex-1">
-                      <p className="text-gray-800 text-sm font-semibold">
-                        {notif.senderName}
-                      </p>
-                      <p className="text-gray-600 text-xs">{notif.message}</p>
-                      <p className="text-gray-400 text-[10px] mt-1">
-                        {new Date(notif.createdAt).toLocaleTimeString()}
-                      </p>
-                    </div>
-
-                    {/* 🗑️ Delete button */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation(); // prevent marking read
-                        deleteNotification(notif._id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 cursor-pointer"
-                      title="Delete notification"
+                notifications.map((notif) => {
+                  return (
+                    <div
+                      key={notif._id}
+                      onClick={() => markOneAsRead(notif._id)}
+                      className={`group px-4 py-2 border-b border-gray-100 flex items-start gap-3 cursor-pointer ${
+                        notif.isRead
+                          ? "bg-gray-50"
+                          : "bg-white hover:bg-gray-50"
+                      }`}
                     >
-                      <PiTrashLight />
-                    </button>
-                  </div>
-                ))
+                      {/* 🟣 Avatar with first letter only */}
+                      <div className="shrink-0 w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-sm uppercase">
+                        {notif.senderId?.username?.[0] || "?"}
+                      </div>
+
+                      {/* Notification text area */}
+                      <div className="flex-1">
+                        <p className="text-gray-800 text-sm font-semibold">
+                          {notif.senderName}
+                        </p>
+                        <p className="text-gray-600 text-xs">{notif.message}</p>
+                        <p className="text-gray-400 text-[10px] mt-1">
+                          {new Date(notif.createdAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+
+                      {/* 🗑️ Delete button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteNotification(notif._id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 cursor-pointer"
+                        title="Delete notification"
+                      >
+                        <PiTrashLight />
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </>
