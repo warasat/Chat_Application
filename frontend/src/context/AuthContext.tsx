@@ -3,7 +3,7 @@ import API from "../services/api";
 import type { User } from "../types/user";
 import socket from "../services/socket";
 
-// 1. Interface: addContactAction ab 'contact' bhi return karega
+// 1️⃣ Interface — added updateUser
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -19,6 +19,7 @@ interface AuthContextType {
     currentUserId: string,
     phoneNumber: string
   ) => Promise<{ success: boolean; message?: string; contact?: User }>;
+  updateUser: (updatedUser: User) => void; // 🔹 NEW
   logout: () => void;
 }
 
@@ -29,6 +30,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
 
+  // Load user from localStorage on first mount
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
@@ -41,7 +43,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setLoading(false);
   }, []);
 
-  // Login Action
+  // 🔹 Update user (for profile changes, etc.)
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem("user", JSON.stringify(updatedUser));
+  };
+
+  // 🔹 Login Action
   const loginAction = async (phoneNumber: string) => {
     setAuthLoading(true);
     try {
@@ -52,7 +60,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       localStorage.setItem("token", token);
       setUser(userData);
 
-      // 🔗 NEW: Register socket session for this user
+      // Register socket session
       socket.emit("set_session", { senderId: userData._id });
       console.log("🔗 Socket session registered for user:", userData._id);
 
@@ -66,7 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // Register Action
+  // 🔹 Register Action
   const registerAction = async (username: string, phoneNumber: string) => {
     setAuthLoading(true);
     try {
@@ -83,6 +91,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  // 🔹 Add Contact Action
   const addContactAction = async (
     currentUserId: string,
     phoneNumber: string
@@ -108,6 +117,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  // 🔹 Logout
   const logout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
@@ -118,12 +128,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     <AuthContext.Provider
       value={{
         user,
+        loading,
+        authLoading,
         loginAction,
         registerAction,
         addContactAction,
+        updateUser,
         logout,
-        loading,
-        authLoading,
       }}
     >
       {!loading && children}
@@ -131,6 +142,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// Custom Hook
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within AuthProvider");

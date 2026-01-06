@@ -17,7 +17,7 @@ const Sidebar = ({ onSelectUser }: SidebarProps) => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [newPhone, setNewPhone] = useState("");
-  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({}); // ✅ NEW
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // Listen for when someone adds you
   useEffect(() => {
@@ -36,7 +36,7 @@ const Sidebar = ({ onSelectUser }: SidebarProps) => {
     };
   }, [loginUser?._id, setUsers]);
 
-  // ✅ Listen for incoming messages to update unread counts
+  //  Listen for incoming messages to update unread counts
   useEffect(() => {
     if (!loginUser?._id) return;
 
@@ -96,13 +96,21 @@ const Sidebar = ({ onSelectUser }: SidebarProps) => {
                   ${activeId === u._id ? "bg-gray-200" : "hover:bg-gray-50"}`}
               >
                 <div className="relative">
-                  <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
-                    {u.username ? u.username[0].toUpperCase() : "?"}
-                  </div>
+                  {u.profilePic ? (
+                    <img
+                      src={u.profilePic}
+                      alt={u.username}
+                      className="w-12 h-12 rounded-full object-cover border border-gray-200"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
+                      {u.username ? u.username[0].toUpperCase() : "?"}
+                    </div>
+                  )}
 
-                  {/* ✅ Unread badge */}
+                  {/* 🔴 Unread badge */}
                   {unreadCounts[u._id] > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full ">
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full">
                       {unreadCounts[u._id]}
                     </span>
                   )}

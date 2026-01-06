@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import socket from "../services/socket"; // central socket
+import socket from "../services/socket";
 import API from "../services/api";
 import type { Message } from "../types/message";
 
@@ -14,30 +14,26 @@ export const useChat = (
   useEffect(() => {
     if (!chatId || !currentUserId) return;
 
-    // --- Fetch chat history ---
+    // Fetch chat history
     API.get(`/messages/${chatId}`).then((res) => {
       const history = Array.isArray(res.data) ? res.data.reverse() : [];
       setMessages(history);
     });
 
-    // --- Set session ---
+    // Socket: session & status
     socket.emit("set_session", { chatId, senderId: currentUserId });
-
-    // --- Request receiver's online status ---
     socket.emit("get_user_status", { userId: receiverId });
 
-    // --- Receive messages ---
+    // Receive messages
     const handleReceiveMessage = (m: Message) => {
       setMessages((prev) => [...prev, m]);
     };
-
     socket.on("receive_message", handleReceiveMessage);
 
-    // --- Receive online/offline status updates ---
+    // Receive online/offline status
     const handleUserStatus = (data: { userId: string; status: string }) => {
       if (data.userId === receiverId) setIsOnline(data.status === "online");
     };
-
     socket.on("user_status", handleUserStatus);
 
     return () => {
@@ -46,14 +42,16 @@ export const useChat = (
     };
   }, [chatId, currentUserId, receiverId]);
 
-  const sendMessage = (content: string, type: "text" | "audio" = "text") => {
+  const sendMessage = (
+    content: string,
+    type: "text" | "audio" | "image" = "text"
+  ) => {
     const newMsg: Message = {
       sender_id: currentUserId,
       content,
       type,
       chat_id: chatId,
     };
-
     socket.emit("message", newMsg);
     setMessages((prev) => [...prev, newMsg]);
   };

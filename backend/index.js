@@ -1,7 +1,9 @@
+import dotenv from "dotenv";
+dotenv.config();
 import express from "express";
 import http from "http";
 import { initSocket } from "./services/socket.service.js";
-import dotenv from "dotenv";
+
 import cors from "cors";
 import connectDB from "./config/mongoDB.js";
 import { connectCassandra } from "./config/cassandra.js";
@@ -9,8 +11,7 @@ import authRoutes from "./routes/auth.route.js";
 import userRoutes from "./routes/user.route.js";
 import messageRoutes from "./routes/message.route.js";
 import notificationRoutes from "./routes/notificaton.route.js";
-
-dotenv.config();
+import uploadRoutes from "./routes/upload.route.js";
 
 connectDB();
 connectCassandra();
@@ -25,6 +26,7 @@ app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
+app.use("/api/messages", uploadRoutes);
 app.use("/api/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {

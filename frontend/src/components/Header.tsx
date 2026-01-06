@@ -1,16 +1,17 @@
 import { useState } from "react";
-import { MoreVertical, LogOut, UserPlus, Bell } from "lucide-react";
+import { MoreVertical, LogOut, UserPlus, Bell, Camera } from "lucide-react";
+import { PiTrashLight } from "react-icons/pi";
 import { useAuth } from "../context/AuthContext";
 import AddContactModal from "../components/AddContatctModal";
 import { useNotifications } from "../hooks/useNotifications";
-import { PiTrashLight } from "react-icons/pi";
 
 const Header = () => {
-  const { logout, user, addContactAction, authLoading } = useAuth();
+  const { logout, user, addContactAction, authLoading, updateUser } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactPhone, setNewContactPhone] = useState("");
   const [showNotifications, setShowNotifications] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const {
     notifications,
@@ -19,6 +20,47 @@ const Header = () => {
     markOneAsRead,
     deleteNotification,
   } = useNotifications(user?._id);
+
+  // 🟢 Upload new profile picture
+  const handleProfileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?._id) return;
+
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      setUploading(true);
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/users/upload-profile`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: formData,
+        }
+      );
+
+      const data = await res.json();
+      if (data.url) {
+        // 🔁 Update user context (optional if you store user globally)
+        if (updateUser) updateUser({ ...user, profilePic: data.url });
+        alert("Profile updated successfully!");
+      } else {
+        alert("Image upload failed");
+      }
+    } catch (err) {
+      console.error("Profile upload error:", err);
+      alert("Upload failed. Try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // 🟣 Add new contact
   const handleAddContact = async () => {
     if (!newContactPhone) return alert("Please enter a phone number");
     if (!user?._id) return;
@@ -35,29 +77,65 @@ const Header = () => {
 
   return (
     <div className="p-4 bg-black text-white flex justify-between items-center relative shadow-md z-30">
-      {/* Left: App Name */}
-      <div className="flex flex-col min-w-0 flex-1">
-        <span className="font-bold text-lg leading-none truncate">ChatApp</span>
-        <span className="text-[10px] text-blue-200 truncate">
-          logged in: {user?.username}
-          <br />
-          {user?.phoneNumber}
-        </span>
+      {/* LEFT — App name and user info */}
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        {/* 🖼️ Profile avatar (uploadable) */}
+        <div className="relative group">
+          {user?.profilePic ? (
+            <img
+              src={user.profilePic}
+              alt="Profile"
+              className="w-10 h-10 rounded-full object-cover border-2 border-white"
+            />
+          ) : (
+            <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center font-bold text-white uppercase">
+              {user?.username?.[0] || "?"}
+            </div>
+          )}
+
+          {/* Small camera icon overlay */}
+          <label
+            htmlFor="profile-upload"
+            className="absolute bottom-0 right-0 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+            title="Change Profile Picture"
+          >
+            <Camera size={12} />
+          </label>
+          <input
+            id="profile-upload"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleProfileUpload}
+          />
+        </div>
+
+        {/* App name + logged in info */}
+        <div className="flex flex-col min-w-0">
+          <span className="font-bold text-lg leading-none truncate">
+            ChatApp
+          </span>
+          <span className="text-[10px] text-blue-200 truncate">
+            logged in: {user?.username}
+            <br />
+            {user?.phoneNumber}
+          </span>
+        </div>
       </div>
 
       {/* 🔔 Notification Bell */}
       <div className="relative mr-4">
         <button
           onClick={() => {
-            const nextState = !showNotifications;
-            setShowNotifications(nextState);
-            if (nextState) markAllAsRead(); // ✅ mark as read when opened
+            const next = !showNotifications;
+            setShowNotifications(next);
+            if (next) markAllAsRead();
           }}
           className="relative p-2 hover:bg-gray-800 rounded-full cursor-pointer"
         >
           <Bell size={20} />
           {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full px-5px py-1px">
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5">
               {unreadCount}
             </span>
           )}
@@ -65,73 +143,56 @@ const Header = () => {
 
         {showNotifications && (
           <>
-            {/* Background overlay (for click outside) */}
             <div
               className="fixed inset-0 z-40"
               onClick={() => setShowNotifications(false)}
-            ></div>
-
-            {/* Properly positioned dropdown */}
-            <div
-              className="absolute left-0 mt-3 w-72 max-h-[70vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 z-50"
-              style={{
-                top: "100%",
-                transform: "translateY(8px)",
-              }}
-            >
+            />
+            <div className="absolute left-0 mt-3 w-72 max-h-[70vh] overflow-y-auto bg-white rounded-xl shadow-2xl border border-gray-200 z-50">
               {notifications.length === 0 ? (
                 <p className="text-gray-500 text-sm text-center py-4">
                   No notifications yet
                 </p>
               ) : (
-                notifications.map((notif) => {
-                  return (
-                    <div
-                      key={notif._id}
-                      onClick={() => markOneAsRead(notif._id)}
-                      className={`group px-4 py-2 border-b border-gray-100 flex items-start gap-3 cursor-pointer ${
-                        notif.isRead
-                          ? "bg-gray-50"
-                          : "bg-white hover:bg-gray-50"
-                      }`}
-                    >
-                      {/* 🟣 Avatar with first letter only */}
-                      <div className="shrink-0 w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-sm uppercase">
-                        {notif.senderId?.username?.[0] || "?"}
-                      </div>
-
-                      {/* Notification text area */}
-                      <div className="flex-1">
-                        <p className="text-gray-800 text-sm font-semibold">
-                          {notif.senderName}
-                        </p>
-                        <p className="text-gray-600 text-xs">{notif.message}</p>
-                        <p className="text-gray-400 text-[10px] mt-1">
-                          {new Date(notif.createdAt).toLocaleTimeString()}
-                        </p>
-                      </div>
-
-                      {/* 🗑️ Delete button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteNotification(notif._id);
-                        }}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 cursor-pointer"
-                        title="Delete notification"
-                      >
-                        <PiTrashLight />
-                      </button>
+                notifications.map((notif) => (
+                  <div
+                    key={notif._id}
+                    onClick={() => markOneAsRead(notif._id)}
+                    className={`group px-4 py-2 border-b border-gray-100 flex items-start gap-3 cursor-pointer ${
+                      notif.isRead ? "bg-gray-50" : "bg-white hover:bg-gray-50"
+                    }`}
+                  >
+                    {/* Avatar */}
+                    <div className="shrink-0 w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-sm uppercase">
+                      {notif.senderId?.username?.[0] || "?"}
                     </div>
-                  );
-                })
+                    <div className="flex-1">
+                      <p className="text-gray-800 text-sm font-semibold">
+                        {notif.senderName}
+                      </p>
+                      <p className="text-gray-600 text-xs">{notif.message}</p>
+                      <p className="text-gray-400 text-[10px] mt-1">
+                        {new Date(notif.createdAt).toLocaleTimeString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteNotification(notif._id);
+                      }}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                      title="Delete notification"
+                    >
+                      <PiTrashLight />
+                    </button>
+                  </div>
+                ))
               )}
             </div>
           </>
         )}
       </div>
 
-      {/* More Menu */}
+      {/* ⋮ More Menu */}
       <div className="relative ml-2">
         <button
           onClick={() => setShowMenu(!showMenu)}
@@ -145,7 +206,7 @@ const Header = () => {
             <div
               className="fixed inset-0 z-40 bg-transparent"
               onClick={() => setShowMenu(false)}
-            ></div>
+            />
             <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-2xl py-1 z-50 border border-gray-200">
               <button
                 onClick={() => {
@@ -180,7 +241,7 @@ const Header = () => {
         phoneNumber={newContactPhone}
         setPhoneNumber={setNewContactPhone}
         onAdd={handleAddContact}
-        isLoading={authLoading}
+        isLoading={authLoading || uploading}
       />
     </div>
   );
