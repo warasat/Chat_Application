@@ -1,15 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import API from "../services/api";
 import socket from "../services/socket";
-
-export interface Notification {
-  _id: string;
-  senderId: string;
-  senderName: string;
-  message: string;
-  createdAt: string;
-  isRead?: boolean;
-}
+import type { Notification } from "../types/notification";
 
 export const useNotifications = (loginUserId?: string) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -23,8 +15,15 @@ export const useNotifications = (loginUserId?: string) => {
       try {
         const res = await API.get(`/notifications/${loginUserId}`);
         const data = res.data.data || [];
-        setNotifications(data);
-        const unread = data.filter((n: Notification) => !n.isRead).length;
+
+        // Normalize sender object
+        const normalized = data.map((notif: any) => ({
+          ...notif,
+          sender: notif.sender || notif.senderId || {},
+        }));
+
+        setNotifications(normalized);
+        const unread = normalized.filter((n: Notification) => !n.isRead).length;
         setUnreadCount(unread);
       } catch (err) {
         console.error("Fetch notifications error:", err);
@@ -38,11 +37,16 @@ export const useNotifications = (loginUserId?: string) => {
   useEffect(() => {
     if (!loginUserId) return;
 
-    // join user room so backend knows where to emit
     socket.emit("set_session", { senderId: loginUserId });
 
-    const handleNewNotification = (notif: Notification) => {
-      setNotifications((prev) => [notif, ...prev]);
+    const handleNewNotification = (notif: any) => {
+      const normalized = {
+        ...notif,
+        sender: notif.sender || notif.senderId || {}, // normalize sender
+      };
+      console.log("🟢 New notification received:", normalized);
+
+      setNotifications((prev) => [normalized, ...prev]);
       setUnreadCount((prev) => prev + 1);
     };
 

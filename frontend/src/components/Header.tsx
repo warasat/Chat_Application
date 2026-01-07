@@ -37,21 +37,15 @@ const Header = () => {
         `${import.meta.env.VITE_API_URL}/users/upload-profile`,
         {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
           body: formData,
         }
       );
-
       const data = await res.json();
       if (data.url) {
-        // 🔁 Update user context (optional if you store user globally)
-        if (updateUser) updateUser({ ...user, profilePic: data.url });
+        updateUser && updateUser({ ...user, profilePic: data.url });
         alert("Profile updated successfully!");
-      } else {
-        alert("Image upload failed");
-      }
+      } else alert("Image upload failed");
     } catch (err) {
       console.error("Profile upload error:", err);
       alert("Upload failed. Try again.");
@@ -79,7 +73,7 @@ const Header = () => {
     <div className="p-4 bg-black text-white flex justify-between items-center relative shadow-md z-30">
       {/* LEFT — App name and user info */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
-        {/* 🖼️ Profile avatar (uploadable) */}
+        {/* 🖼️ Profile avatar */}
         <div className="relative group">
           {user?.profilePic ? (
             <img
@@ -93,7 +87,6 @@ const Header = () => {
             </div>
           )}
 
-          {/* Small camera icon overlay */}
           <label
             htmlFor="profile-upload"
             className="absolute bottom-0 right-0 w-5 h-5 bg-gray-800 text-white rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
@@ -110,7 +103,6 @@ const Header = () => {
           />
         </div>
 
-        {/* App name + logged in info */}
         <div className="flex flex-col min-w-0">
           <span className="font-bold text-lg leading-none truncate">
             ChatApp
@@ -123,7 +115,7 @@ const Header = () => {
         </div>
       </div>
 
-      {/* 🔔 Notification Bell */}
+      {/* 🔔 Notifications */}
       <div className="relative mr-4">
         <button
           onClick={() => {
@@ -153,39 +145,57 @@ const Header = () => {
                   No notifications yet
                 </p>
               ) : (
-                notifications.map((notif) => (
-                  <div
-                    key={notif._id}
-                    onClick={() => markOneAsRead(notif._id)}
-                    className={`group px-4 py-2 border-b border-gray-100 flex items-start gap-3 cursor-pointer ${
-                      notif.isRead ? "bg-gray-50" : "bg-white hover:bg-gray-50"
-                    }`}
-                  >
-                    {/* Avatar */}
-                    <div className="shrink-0 w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-sm uppercase">
-                      {notif.senderId?.username?.[0] || "?"}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-gray-800 text-sm font-semibold">
-                        {notif.senderName}
-                      </p>
-                      <p className="text-gray-600 text-xs">{notif.message}</p>
-                      <p className="text-gray-400 text-[10px] mt-1">
-                        {new Date(notif.createdAt).toLocaleTimeString()}
-                      </p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteNotification(notif._id);
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
-                      title="Delete notification"
+                notifications.map((notif) => {
+                  const sender = notif.sender; // always defined now
+                  console.log("Rendering notification:", notif);
+                  console.log("Sender object:", sender);
+                  console.log("Profile Pic URL:", sender?.profilePic);
+
+                  return (
+                    <div
+                      key={notif._id}
+                      onClick={() => markOneAsRead(notif._id)}
+                      className={`group px-4 py-2 border-b border-gray-100 flex items-start gap-3 cursor-pointer ${
+                        notif.isRead
+                          ? "bg-gray-50"
+                          : "bg-white hover:bg-gray-50"
+                      }`}
                     >
-                      <PiTrashLight />
-                    </button>
-                  </div>
-                ))
+                      {/* Avatar */}
+                      <div className="shrink-0 w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-sm uppercase">
+                        {sender?.profilePic ? (
+                          <img
+                            src={sender.profilePic}
+                            alt={sender.username || "?"}
+                            className="w-9 h-9 rounded-full object-cover"
+                          />
+                        ) : (
+                          sender?.username?.[0]?.toUpperCase() || "?"
+                        )}
+                      </div>
+
+                      {/* Message */}
+                      <div className="flex-1">
+                        <p className="text-gray-600 text-xs">{notif.message}</p>
+                        <p className="text-gray-400 text-[10px] mt-1">
+                          {new Date(notif.createdAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteNotification(notif._id);
+                        }}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                        title="Delete notification"
+                      >
+                        <PiTrashLight />
+                      </button>
+                    </div>
+                  );
+                })
               )}
             </div>
           </>

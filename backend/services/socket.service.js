@@ -41,18 +41,21 @@ export const initSocket = (server) => {
 
     // --- MESSAGES ---
     socket.on("message", async (data) => {
+      console.log("📨 New message event:", data);
       const content = typeof data === "string" ? data : data.content;
       const type = data.type || "text";
       const receiverId = data.receiverId;
 
       const msgData = {
-        chatId: socket.chatId,
-        senderId: socket.senderId,
+        chatId: data.chat_id,
+        senderId: data.sender_id,
         receiverId,
         content,
         type,
         time: new Date(),
       };
+
+      console.log("__________________ message data: ", msgData);
 
       try {
         const query =
@@ -60,10 +63,12 @@ export const initSocket = (server) => {
         const params = [
           msgData.chatId,
           msgData.senderId,
+          // msgData.receiverId,
           msgData.content,
           msgData.type,
           msgData.time,
         ];
+
         await cassandraClient.execute(query, params, { prepare: true });
 
         // Broadcast to chat room

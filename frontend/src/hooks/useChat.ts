@@ -7,6 +7,7 @@ export const useChat = (
   chatId: string,
   currentUserId: string,
   receiverId: string
+  // senderId: string
 ) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isOnline, setIsOnline] = useState(false);
@@ -17,6 +18,7 @@ export const useChat = (
     // Fetch chat history
     API.get(`/messages/${chatId}`).then((res) => {
       const history = Array.isArray(res.data) ? res.data.reverse() : [];
+      // console.log("_____________history: ", history);
       setMessages(history);
     });
 
@@ -26,7 +28,10 @@ export const useChat = (
 
     // Receive messages
     const handleReceiveMessage = (m: Message) => {
-      setMessages((prev) => [...prev, m]);
+      // Only add messages that belong to this chat
+      if (m.chat_id === chatId) {
+        setMessages((prev) => [...prev, m]);
+      }
     };
     socket.on("receive_message", handleReceiveMessage);
 
@@ -49,6 +54,7 @@ export const useChat = (
     const newMsg: Message = {
       sender_id: currentUserId,
       content,
+      receiverId,
       type,
       chat_id: chatId,
     };

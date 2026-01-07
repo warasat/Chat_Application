@@ -56,10 +56,24 @@ export const addContact = async (req, res) => {
     // 🔔 Real-time notification to User B
     const io = getIO();
     if (io) {
+      console.log("🔥 Sending notification to user:", userToAdd._id.toString());
+      console.log("Notification payload:", {
+        _id: notification._id,
+        sender: {
+          _id: currentUser._id,
+          username: currentUser.username,
+          profilePic: currentUser.profilePic || null,
+        },
+        message,
+        createdAt: notification.createdAt,
+      });
       io.to(userToAdd._id.toString()).emit("contact_added_notification", {
         _id: notification._id,
-        senderId: currentUser._id,
-        senderName: currentUser.username,
+        sender: {
+          _id: currentUser._id,
+          username: currentUser.username,
+          profilePic: currentUser.profilePic || null,
+        },
         message,
         createdAt: notification.createdAt,
       });

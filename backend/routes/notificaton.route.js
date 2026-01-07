@@ -9,7 +9,7 @@ router.get("/:userId", async (req, res) => {
     const { userId } = req.params;
     const notifications = await Notification.find({ receiverId: userId })
       .sort({ createdAt: -1 })
-      .populate("senderId", "username phoneNumber");
+      .populate("senderId", "username phoneNumber profilePic");
     res.json({ success: true, data: notifications });
   } catch (err) {
     console.error("Fetch notifications error:", err);

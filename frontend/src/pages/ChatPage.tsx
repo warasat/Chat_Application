@@ -11,9 +11,15 @@ interface ChatPageProps {
   chatId: string;
   currentUserId: string;
   receiver: User;
+  // sender: User;
 }
 
-const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
+const ChatPage = ({
+  chatId,
+  currentUserId,
+  receiver,
+}: // sender,
+ChatPageProps) => {
   // --- State ---
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -29,6 +35,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     chatId,
     currentUserId,
     receiver._id
+    // sender._id
   );
 
   const { isRecording, startRecording, stopRecording } = useVoiceRecorder(
