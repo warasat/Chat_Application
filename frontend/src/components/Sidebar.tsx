@@ -41,7 +41,7 @@ const Sidebar = ({ onSelectUser }: SidebarProps) => {
     if (!loginUser?._id) return;
 
     socket.on("receive_message", (data) => {
-      const senderId = data.senderId;
+      const senderId = data.sender_id;
       // Increment only if the message is not from the active chat
       if (senderId !== activeId) {
         setUnreadCounts((prev) => ({

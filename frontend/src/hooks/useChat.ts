@@ -1,65 +1,77 @@
 import { useState, useEffect } from "react";
 import socket from "../services/socket";
 import API from "../services/api";
-import type { Message } from "../types/message";
 
 export const useChat = (
   chatId: string,
   currentUserId: string,
   receiverId: string
-  // senderId: string
 ) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const [isOnline, setIsOnline] = useState(false);
 
   useEffect(() => {
     if (!chatId || !currentUserId) return;
 
-    // Fetch chat history
+    // 1. Fetch Chat History from Database
     API.get(`/messages/${chatId}`).then((res) => {
       const history = Array.isArray(res.data) ? res.data.reverse() : [];
-      // console.log("_____________history: ", history);
       setMessages(history);
     });
 
-    // Socket: session & status
-    socket.emit("set_session", { chatId, senderId: currentUserId });
+    // 2. Setup Socket Session
+    socket.emit("set_session", { chat_id: chatId, sender_id: currentUserId });
     socket.emit("get_user_status", { userId: receiverId });
 
-    // Receive messages
-    const handleReceiveMessage = (m: Message) => {
-      // Only add messages that belong to this chat
-      if (m.chat_id === chatId) {
-        setMessages((prev) => [...prev, m]);
+    // 3. Listen for Incoming Messages
+    const handleReceiveMessage = (m: any) => {
+      const incomingChatId = m.chat_id || m.chatId;
+      const incomingSenderId = m.sender_id || m.senderId;
+
+      // Only update if it belongs to THIS chat window
+      if (incomingChatId === chatId) {
+        if (incomingSenderId !== currentUserId) {
+          setMessages((prev) => [...prev, m]);
+        }
       }
     };
+
     socket.on("receive_message", handleReceiveMessage);
 
-    // Receive online/offline status
-    const handleUserStatus = (data: { userId: string; status: string }) => {
-      if (data.userId === receiverId) setIsOnline(data.status === "online");
+    // 4. Listen for User Status
+    const handleStatus = (data: any) => {
+      if (data.userId === receiverId) {
+        setIsOnline(data.status === "online");
+      }
     };
-    socket.on("user_status", handleUserStatus);
 
+    socket.on("user_status", handleStatus);
+
+    // 5. Cleanup on Unmount
     return () => {
       socket.off("receive_message", handleReceiveMessage);
-      socket.off("user_status", handleUserStatus);
+      socket.off("user_status", handleStatus);
     };
   }, [chatId, currentUserId, receiverId]);
 
-  const sendMessage = (
-    content: string,
-    type: "text" | "audio" | "image" = "text"
-  ) => {
-    const newMsg: Message = {
-      sender_id: currentUserId,
-      content,
-      receiverId,
-      type,
+  // Function to send a message
+  const sendMessage = (content: string, type: string = "text") => {
+    if (!content.trim()) return;
+
+    const newMsg = {
       chat_id: chatId,
+      sender_id: currentUserId,
+      receiver_id: receiverId,
+      content,
+      type,
+      message_time: new Date().toISOString(),
     };
-    socket.emit("message", newMsg);
+
+    // Add to UI immediately for a snappy feel
     setMessages((prev) => [...prev, newMsg]);
+
+    // Emit to backend
+    socket.emit("message", newMsg);
   };
 
   return { messages, isOnline, sendMessage };
