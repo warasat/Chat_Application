@@ -1,63 +1,74 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 
-export const useVoiceRecorder = (onUploadSuccess: (url: string) => void) => {
+export const useVoiceRecorder = (onSave: (audioUrl: string) => void) => {
   const [isRecording, setIsRecording] = useState(false);
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const audioChunks = useRef<Blob[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
-  const startRecording = async () => {
+  // Start recording
+  const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder.current = new MediaRecorder(stream);
-      audioChunks.current = [];
 
-      mediaRecorder.current.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunks.current.push(e.data);
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
       };
 
-      mediaRecorder.current.onstop = async () => {
-        const audioBlob = new Blob(audioChunks.current, { type: "audio/mpeg" });
-        await handleAudioUpload(audioBlob);
-        // Tracks ko stop karna zaroori hai taake mic icon chala jaye
-        stream.getTracks().forEach((track) => track.stop());
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: "audio/webm",
+        });
+        const formData = new FormData();
+        formData.append("audio", audioBlob, `voice-${Date.now()}.webm`);
+
+        try {
+          // Upload to backend
+          const token = localStorage.getItem("token");
+          const res = await fetch(
+            `${import.meta.env.VITE_API_URL}/messages/upload-audio`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+              body: formData,
+            }
+          );
+
+          const data = await res.json();
+          if (data.url) {
+            onSave(data.url);
+          } else {
+            console.error("Audio upload failed", data);
+          }
+        } catch (err) {
+          console.error("Audio upload error:", err);
+        }
       };
 
-      mediaRecorder.current.start();
+      mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      console.error("Mic Error:", err);
-      alert("Microphone access denied or error occurred.");
+      console.error("Mic access denied or unavailable:", err);
     }
-  };
+  }, [onSave]);
 
-  const stopRecording = () => {
-    if (mediaRecorder.current && isRecording) {
-      mediaRecorder.current.stop();
-      setIsRecording(false);
-    }
-  };
+  // Stop recording
+  const stopRecording = useCallback(() => {
+    if (!mediaRecorderRef.current) return;
 
-  const handleAudioUpload = async (blob: Blob) => {
-    const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-    const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
-
-    const formData = new FormData();
-    formData.append("file", blob);
-    formData.append("upload_preset", uploadPreset);
-
-    try {
-      const res = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/video/upload`,
-        { method: "POST", body: formData }
-      );
-      const data = await res.json();
-      if (data.secure_url) {
-        onUploadSuccess(data.secure_url); // URL milne par parent ko inform karein
-      }
-    } catch (err) {
-      console.error("Cloudinary Upload Failed:", err);
-    }
-  };
+    mediaRecorderRef.current.stop();
+    mediaRecorderRef.current.stream
+      .getTracks()
+      .forEach((track) => track.stop());
+    setIsRecording(false);
+  }, []);
 
   return { isRecording, startRecording, stopRecording };
 };
