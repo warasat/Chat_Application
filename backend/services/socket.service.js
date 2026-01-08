@@ -39,8 +39,6 @@ export const initSocket = (server) => {
 
     // --- MESSAGES ---
     socket.on("message", async (data) => {
-      console.log("📨 Incoming socket data:", data);
-
       // 1. Extract and Normalize Data
       const chat_id = data.chat_id || data.chatId;
       const sender_id = data.sender_id || data.senderId;
@@ -83,8 +81,6 @@ export const initSocket = (server) => {
           message_time: message_time.toISOString(),
         };
 
-        // 4. Broadcast to the specific chat room
-        console.log(`📤 Broadcasting to room: ${chat_id}`);
         io.to(chat_id).emit("receive_message", msgPayload);
 
         // 5. Sidebar update for receiver (using receiver_id room)

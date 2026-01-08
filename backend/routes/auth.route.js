@@ -3,12 +3,14 @@ import {
   registerUserService,
   loginUserService,
 } from "../services/auth.service.js";
+import { upload } from "../middlewares/upload.middleware.js";
 
 const router = express.Router();
 
-router.post("/register", async (req, res) => {
+router.post("/register", upload.single("profilePic"), async (req, res) => {
   try {
-    const result = await registerUserService(req.body);
+    // req.body ke saath req.file bhi service ko bhej rahe hain
+    const result = await registerUserService({ ...req.body, file: req.file });
     res.status(result.status).json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

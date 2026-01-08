@@ -3,7 +3,6 @@ import API from "../services/api";
 import type { User } from "../types/user";
 import socket from "../services/socket";
 
-// 1️⃣ Interface — added updateUser
 interface AuthContextType {
   user: User | null;
   loading: boolean;
@@ -13,13 +12,14 @@ interface AuthContextType {
   ) => Promise<{ success: boolean; message?: string }>;
   registerAction: (
     username: string,
-    phoneNumber: string
+    phoneNumber: string,
+    profilePic: File | null // 🔹 New parameter
   ) => Promise<{ success: boolean; message?: string }>;
   addContactAction: (
     currentUserId: string,
     phoneNumber: string
   ) => Promise<{ success: boolean; message?: string; contact?: User }>;
-  updateUser: (updatedUser: User) => void; // 🔹 NEW
+  updateUser: (updatedUser: User) => void;
   logout: () => void;
 }
 
@@ -30,7 +30,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Load user from localStorage on first mount
   useEffect(() => {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
@@ -43,13 +42,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setLoading(false);
   }, []);
 
-  // 🔹 Update user (for profile changes, etc.)
   const updateUser = (updatedUser: User) => {
     setUser(updatedUser);
     localStorage.setItem("user", JSON.stringify(updatedUser));
   };
 
-  // 🔹 Login Action
   const loginAction = async (phoneNumber: string) => {
     setAuthLoading(true);
     try {
@@ -60,25 +57,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       localStorage.setItem("token", token);
       setUser(userData);
 
-      // Register socket session
       socket.emit("set_session", { senderId: userData._id });
-      console.log("🔗 Socket session registered for user:", userData._id);
-
       return { success: true };
     } catch (err: any) {
-      const errorMsg =
-        err.response?.data?.message || "Login failed. Please try again.";
+      const errorMsg = err.response?.data?.message || "Login failed.";
       return { success: false, message: errorMsg };
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // 🔹 Register Action
-  const registerAction = async (username: string, phoneNumber: string) => {
+  // 🔹 Updated Register Action to handle FormData
+  const registerAction = async (
+    username: string,
+    phoneNumber: string,
+    profilePic: File | null
+  ) => {
     setAuthLoading(true);
     try {
-      await API.post("/auth/register", { username, phoneNumber });
+      const formData = new FormData();
+      formData.append("username", username);
+      formData.append("phoneNumber", phoneNumber);
+
+      if (profilePic) {
+        formData.append("profilePic", profilePic); // "profilePic" match with backend upload.single
+      }
+
+      await API.post("/auth/register", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
       return { success: true };
     } catch (err: any) {
       const errorMsg =
@@ -91,7 +101,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  // 🔹 Add Contact Action
   const addContactAction = async (
     currentUserId: string,
     phoneNumber: string
@@ -102,22 +111,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         phoneNumber,
         currentUserId,
       });
-
       return {
         success: true,
         message: res.data.message,
         contact: res.data.contact,
       };
     } catch (err: any) {
-      const errorMsg =
-        err.response?.data?.message || "User not found in database";
+      const errorMsg = err.response?.data?.message || "User not found";
       return { success: false, message: errorMsg };
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // 🔹 Logout
   const logout = () => {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
@@ -142,7 +148,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// Custom Hook
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error("useAuth must be used within AuthProvider");
