@@ -27,6 +27,9 @@ ChatPageProps) => {
   const [showCameraOptions, setShowCameraOptions] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isSending, setIsSending] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +42,14 @@ ChatPageProps) => {
   );
 
   const { isRecording, startRecording, stopRecording } = useVoiceRecorder(
-    (audioUrl) => sendMessage(audioUrl, "audio")
+    async (audioUrl) => {
+      try {
+        setIsSending(true); // start sending
+        await sendMessage(audioUrl, "audio"); // send audio message
+      } finally {
+        setIsSending(false); // done sending
+      }
+    }
   );
 
   // --- Image Modal ---
@@ -225,10 +235,12 @@ ChatPageProps) => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          disabled={isRecording || uploading}
+          disabled={isRecording || uploading || isSending}
           placeholder={
             isRecording
               ? "Recording voice..."
+              : isSending
+              ? "Sending..."
               : uploading
               ? "Uploading image..."
               : "Type a message"
@@ -237,17 +249,46 @@ ChatPageProps) => {
         />
 
         {/* VOICE BUTTON */}
-        <button
-          onMouseDown={startRecording}
-          onMouseUp={stopRecording}
-          className={`p-2 rounded-full transition-all ${
-            isRecording
-              ? "bg-red-500 text-white animate-pulse"
-              : "text-purple-600 hover:bg-purple-50"
-          }`}
-        >
-          {isRecording ? <Square size={20} /> : <Mic size={22} />}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onMouseDown={() => {
+              console.log("🎙️ Recording started...");
+              setRecordingTime(0);
+
+              // start timer
+              timerRef.current = setInterval(() => {
+                setRecordingTime((prev) => prev + 1);
+              }, 1000);
+
+              startRecording();
+            }}
+            onMouseUp={() => {
+              console.log(
+                `🛑 Recording stopped after ${recordingTime} seconds`
+              );
+              if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+              }
+              stopRecording();
+              setRecordingTime(0);
+            }}
+            className={`p-2 rounded-full transition-all ${
+              isRecording
+                ? "bg-red-500 text-white animate-pulse"
+                : "text-purple-600 hover:bg-purple-50"
+            }`}
+          >
+            {isRecording ? <Square size={20} /> : <Mic size={22} />}
+          </button>
+
+          {/* Display timer while recording */}
+          {isRecording && (
+            <span className="text-xs text-gray-500 font-medium">
+              {recordingTime}s
+            </span>
+          )}
+        </div>
 
         {/* SEND BUTTON */}
         <button
