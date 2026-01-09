@@ -2,15 +2,16 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useUsers } from "../hooks/useUser";
 import type { User } from "../types/user";
-import { Plus } from "lucide-react";
 import AddContactModal from "./AddContatctModal";
 import socket from "../services/socket";
+import FloatButton from "./FloatButton";
 
 interface SidebarProps {
   onSelectUser: (user: User) => void;
+  onAIChat: () => void;
 }
 
-const Sidebar = ({ onSelectUser }: SidebarProps) => {
+const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
   const { user: loginUser, addContactAction, authLoading } = useAuth();
   const { users, loading, setUsers } = useUsers(loginUser?._id);
 
@@ -135,18 +136,10 @@ const Sidebar = ({ onSelectUser }: SidebarProps) => {
       </div>
 
       {/* Floating Button */}
-      <button
-        onClick={() => setShowModal(true)}
-        className="absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-blue-700 hover:scale-110 active:scale-95 transition-all cursor-pointer z-50 group"
-      >
-        <Plus
-          size={28}
-          className="group-hover:rotate-90 transition-transform duration-300"
-        />
-        <span className="absolute right-16 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          Add New Contact
-        </span>
-      </button>
+      <FloatButton
+        onAddContact={() => setShowModal(true)}
+        onAIChat={onAIChat}
+      />
 
       {/* Modal */}
       <AddContactModal

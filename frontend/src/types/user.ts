@@ -4,4 +4,5 @@ export interface User {
   phoneNumber: string;
   profilePic?: string;
   bio?: string;
+  isBot: boolean;
 }

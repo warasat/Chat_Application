@@ -12,6 +12,7 @@ import userRoutes from "./routes/user.route.js";
 import messageRoutes from "./routes/message.route.js";
 import notificationRoutes from "./routes/notificaton.route.js";
 import uploadRoutes from "./routes/upload.route.js";
+import AIRoutes from "./routes/ai.route.js";
 
 connectDB();
 connectCassandra();
@@ -28,6 +29,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/messages", uploadRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/ai", AIRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend of chat Running with MongoDB & Cassandra...");
