@@ -1,3 +1,4 @@
+// hooks/useAIChat.ts
 import { useState } from "react";
 import { sendAIMessage } from "../services/ai.service";
 
@@ -6,21 +7,30 @@ export interface AIMessage {
   text: string;
 }
 
+type AIChatsMap = Record<string, AIMessage[]>; // chatId => messages
+
 export function useAIChat() {
-  const [messages, setMessages] = useState<AIMessage[]>([]);
-  const [history, setHistory] = useState<
-    { id: string; title: string; messages: any[] }[]
-  >([]);
+  const [chats, setChats] = useState<AIChatsMap>({});
   const [isSending, setIsSending] = useState(false);
 
-  const sendMessage = async (text: string) => {
+  // send AI message for a specific chatId
+  const sendMessage = async (chatId: string, text: string) => {
     if (!text) return;
-    setMessages((prev) => [...prev, { sender: "user", text }]);
+
+    // add user message
+    setChats((prev) => ({
+      ...prev,
+      [chatId]: [...(prev[chatId] || []), { sender: "user", text }],
+    }));
+
     setIsSending(true);
 
     try {
-      const aiReply = await sendAIMessage(text, messages);
-      setMessages((prev) => [...prev, { sender: "ai", text: aiReply }]);
+      const aiReply = await sendAIMessage(text, chats[chatId] || []);
+      setChats((prev) => ({
+        ...prev,
+        [chatId]: [...(prev[chatId] || []), { sender: "ai", text: aiReply }],
+      }));
     } catch (err) {
       console.error("AI error:", err);
     } finally {
@@ -28,18 +38,13 @@ export function useAIChat() {
     }
   };
 
-  const startNewChat = () => {
-    setMessages([]);
-    // optionally create new history entry
+  const getMessages = (chatId: string) => {
+    return chats[chatId] || [];
   };
 
-  return {
-    messages,
-    sendMessage,
-    isSending,
-    history,
-    startNewChat,
-    setHistory,
-    setMessages,
+  const startNewChat = (chatId: string) => {
+    setChats((prev) => ({ ...prev, [chatId]: [] }));
   };
+
+  return { sendMessage, getMessages, startNewChat, isSending };
 }

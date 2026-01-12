@@ -5,6 +5,7 @@ import type { User } from "../types/user";
 import AddContactModal from "./AddContatctModal";
 import socket from "../services/socket";
 import FloatButton from "./FloatButton";
+import { AI_CONTACT } from "../constants/AIContact";
 
 interface SidebarProps {
   onSelectUser: (user: User) => void;
@@ -19,6 +20,7 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
   const [showModal, setShowModal] = useState(false);
   const [newPhone, setNewPhone] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Listen for when someone adds you
   useEffect(() => {
@@ -37,13 +39,12 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
     };
   }, [loginUser?._id, setUsers]);
 
-  //  Listen for incoming messages to update unread counts
+  // Listen for incoming messages to update unread counts
   useEffect(() => {
     if (!loginUser?._id) return;
 
     socket.on("receive_message", (data) => {
       const senderId = data.sender_id;
-      // Increment only if the message is not from the active chat
       if (senderId !== activeId) {
         setUnreadCounts((prev) => ({
           ...prev,
@@ -57,39 +58,44 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
     };
   }, [activeId, loginUser?._id]);
 
-  // When a user is selected, reset unread count
+  // Handle user select
   const handleSelectUser = (u: User) => {
     onSelectUser(u);
     setActiveId(u._id);
     setUnreadCounts((prev) => ({ ...prev, [u._id]: 0 }));
   };
 
-  const handleAddNewContact = async () => {
-    if (!loginUser?._id || !newPhone) return;
-    const res = await addContactAction(loginUser._id, newPhone);
+  // Merge AI contact with users
+  const allContacts = [AI_CONTACT, ...(users || [])];
 
-    if (res.success && res.contact) {
-      setUsers((prev) => {
-        const exists = prev.find((u) => u._id === res.contact?._id);
-        if (exists) return prev;
-        return [res.contact!, ...prev];
-      });
-      setShowModal(false);
-      setNewPhone("");
-    } else {
-      alert(res.message);
-    }
-  };
+  // Filter contacts by search term
+  const filteredContacts = allContacts.filter((u) => {
+    const term = searchTerm.toLowerCase();
+    const usernameMatch = u.username.toLowerCase().includes(term);
+    const phoneMatch = u.phoneNumber?.includes(term);
+    return usernameMatch || phoneMatch;
+  });
 
   if (loading) return <div className="p-4">Loading chats...</div>;
 
   return (
     <div className="relative flex-1 flex flex-col min-h-0 bg-white border-r">
+      {/* SEARCH BAR */}
+      <div className="p-2 border-b bg-gray-50">
+        <input
+          type="text"
+          placeholder="Search by name or phone..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full p-2 rounded-md border border-gray-300 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+        />
+      </div>
+
       {/* Users List Area */}
       <div className="flex-1 overflow-y-auto">
         <div className="flex flex-col">
-          {users.length > 0 ? (
-            users.map((u) => (
+          {filteredContacts.length > 0 ? (
+            filteredContacts.map((u) => (
               <div
                 key={u._id}
                 onClick={() => handleSelectUser(u)}
@@ -109,8 +115,8 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
                     </div>
                   )}
 
-                  {/* 🔴 Unread badge */}
-                  {unreadCounts[u._id] > 0 && (
+                  {/* 🔴 Unread badge (skip for AI) */}
+                  {!u.isBot && unreadCounts[u._id] > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-semibold px-1.5 py-0.5 rounded-full">
                       {unreadCounts[u._id]}
                     </span>
@@ -122,14 +128,14 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
                     {u.username}
                   </h3>
                   <p className="text-xs text-gray-500 truncate">
-                    {u.phoneNumber}
+                    {u.isBot ? "AI Assistant" : u.phoneNumber}
                   </p>
                 </div>
               </div>
             ))
           ) : (
             <div className="p-4 text-center text-gray-500 text-sm">
-              No contacts yet. Click the + button to add.
+              No contacts found.
             </div>
           )}
         </div>
@@ -141,13 +147,28 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
         onAIChat={onAIChat}
       />
 
-      {/* Modal */}
+      {/* Add Contact Modal */}
       <AddContactModal
         isOpen={showModal}
         onClose={() => setShowModal(false)}
         phoneNumber={newPhone}
         setPhoneNumber={setNewPhone}
-        onAdd={handleAddNewContact}
+        onAdd={async () => {
+          if (!loginUser?._id || !newPhone) return;
+          const res = await addContactAction(loginUser._id, newPhone);
+
+          if (res.success && res.contact) {
+            setUsers((prev) => {
+              const exists = prev.find((u) => u._id === res.contact?._id);
+              if (exists) return prev;
+              return [res.contact!, ...prev];
+            });
+            setShowModal(false);
+            setNewPhone("");
+          } else {
+            alert(res.message);
+          }
+        }}
         isLoading={authLoading}
       />
     </div>

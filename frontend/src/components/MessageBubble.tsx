@@ -1,4 +1,6 @@
 import type { Message } from "../types/message";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
 
 interface MessageBubbleProps {
   message: Message;
@@ -13,6 +15,9 @@ const MessageBubble = ({
 }: MessageBubbleProps) => {
   const isMe =
     message.sender_id === currentUserId || message.senderId === currentUserId;
+
+  const renderContentHtml = () =>
+    DOMPurify.sanitize(marked.parse(message.content || ""));
 
   return (
     <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
@@ -37,7 +42,7 @@ const MessageBubble = ({
             onClick={() => onImageClick?.(message.content)}
           />
         ) : (
-          <p>{message.content}</p>
+          <p dangerouslySetInnerHTML={{ __html: renderContentHtml() }} />
         )}
       </div>
     </div>

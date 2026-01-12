@@ -5,4 +5,5 @@ export interface User {
   profilePic?: string;
   bio?: string;
   isBot: boolean;
+  isOnline: string;
 }

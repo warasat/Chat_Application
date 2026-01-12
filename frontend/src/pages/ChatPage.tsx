@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Mic, Square, Camera, X } from "lucide-react";
 import { useChat } from "../hooks/useChat";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+import { useAIChat } from "../hooks/useAIChat";
 import type { User } from "../types/user";
 import MessageBubble from "../components/MessageBubble";
 import CameraModal from "../components/CameraModal";
@@ -11,16 +12,9 @@ interface ChatPageProps {
   chatId: string;
   currentUserId: string;
   receiver: User;
-  // sender: User;
 }
 
-const ChatPage = ({
-  chatId,
-  currentUserId,
-  receiver,
-}: // sender,
-ChatPageProps) => {
-  // --- State ---
+const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -28,32 +22,41 @@ ChatPageProps) => {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isSending, setIsSending] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // --- Hooks ---
-  const { messages, isOnline, sendMessage } = useChat(
-    chatId,
-    currentUserId,
-    receiver._id
-    // sender._id
-  );
+  const {
+    messages,
+    isOnline,
+    sendMessage: sendUserMessage,
+  } = useChat(chatId, currentUserId, receiver._id);
+
+  const {
+    sendMessage: sendAIMessage,
+    getMessages,
+    isSending: isAISending,
+  } = useAIChat();
+
+  // decide which messages to show: normal user chat or AI
+  const chatMessages = receiver.isBot ? getMessages(chatId) : messages;
 
   const { isRecording, startRecording, stopRecording } = useVoiceRecorder(
     async (audioUrl) => {
       try {
-        setIsSending(true); // start sending
-        await sendMessage(audioUrl, "audio"); // send audio message
+        setIsSending(true);
+        if (receiver.isBot) await sendAIMessage(chatId, audioUrl);
+        else await sendUserMessage(audioUrl, "audio");
       } finally {
-        setIsSending(false); // done sending
+        setIsSending(false);
       }
     }
   );
 
   // --- Image Modal ---
-  const imageMessages = messages.filter((m) => m.type === "image");
+  const imageMessages = chatMessages.filter((m: any) => m.type === "image");
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
@@ -67,9 +70,9 @@ ChatPageProps) => {
   // --- Scroll to bottom on new message ---
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [chatMessages]);
 
-  // --- Send message handler ---
+  // --- Send handler ---
   const handleSend = async () => {
     if (!input.trim() && !selectedFile) return;
 
@@ -104,11 +107,16 @@ ChatPageProps) => {
       setSelectedFile(null);
     }
 
-    sendMessage(content, selectedFile ? "image" : "text");
     setInput("");
+    setIsSending(true);
+
+    if (receiver.isBot) await sendAIMessage(chatId, content);
+    else sendUserMessage(content, selectedFile ? "image" : "text");
+
+    setIsSending(false);
   };
 
-  // --- File selection handler ---
+  // --- File selection ---
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -116,7 +124,7 @@ ChatPageProps) => {
     setShowCameraOptions(false);
   };
 
-  // --- Open camera (desktop) ---
+  // --- Camera ---
   const openCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -162,10 +170,19 @@ ChatPageProps) => {
 
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto p-4 space-y-2">
-        {messages.map((m, i) => (
+        {chatMessages.map((m: any, i: number) => (
           <MessageBubble
             key={i}
-            message={m}
+            message={
+              receiver.isBot
+                ? {
+                    content: m.text,
+                    senderId:
+                      m.sender === "user" ? currentUserId : receiver._id,
+                    type: "text",
+                  }
+                : m
+            }
             currentUserId={currentUserId}
             onImageClick={handleOpenImageModal}
           />
@@ -221,7 +238,7 @@ ChatPageProps) => {
           )}
         </div>
 
-        {/* HIDDEN GALLERY INPUT */}
+        {/* HIDDEN FILE INPUT */}
         <input
           type="file"
           accept="image/*"
@@ -235,11 +252,11 @@ ChatPageProps) => {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSend()}
-          disabled={isRecording || uploading || isSending}
+          disabled={isRecording || uploading || isSending || isAISending}
           placeholder={
             isRecording
               ? "Recording voice..."
-              : isSending
+              : isSending || isAISending
               ? "Sending..."
               : uploading
               ? "Uploading image..."
@@ -252,20 +269,13 @@ ChatPageProps) => {
         <div className="flex items-center gap-3">
           <button
             onMouseDown={() => {
-              console.log("🎙️ Recording started...");
               setRecordingTime(0);
-
-              // start timer
               timerRef.current = setInterval(() => {
                 setRecordingTime((prev) => prev + 1);
               }, 1000);
-
               startRecording();
             }}
             onMouseUp={() => {
-              console.log(
-                `🛑 Recording stopped after ${recordingTime} seconds`
-              );
               if (timerRef.current) {
                 clearInterval(timerRef.current);
                 timerRef.current = null;
@@ -281,8 +291,6 @@ ChatPageProps) => {
           >
             {isRecording ? <Square size={20} /> : <Mic size={22} />}
           </button>
-
-          {/* Display timer while recording */}
           {isRecording && (
             <span className="text-xs text-gray-500 font-medium">
               {recordingTime}s
@@ -321,7 +329,7 @@ ChatPageProps) => {
       <ImageModal
         isOpen={isImageModalOpen}
         onClose={() => setIsImageModalOpen(false)}
-        images={imageMessages.map((m) => m.content)}
+        images={imageMessages.map((m: any) => m.content)}
         currentIndex={currentImageIndex}
         onChangeIndex={setCurrentImageIndex}
       />
