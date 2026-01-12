@@ -1,4 +1,3 @@
-// hooks/useAIChat.ts
 import { useState } from "react";
 import { sendAIMessage } from "../services/ai.service";
 
@@ -7,29 +6,41 @@ export interface AIMessage {
   text: string;
 }
 
-type AIChatsMap = Record<string, AIMessage[]>; // chatId => messages
+type AIChatsMap = Record<string, AIMessage[]>;
 
 export function useAIChat() {
   const [chats, setChats] = useState<AIChatsMap>({});
   const [isSending, setIsSending] = useState(false);
 
-  // send AI message for a specific chatId
+  // Function to load history from database
+  const setMessages = (chatId: string, messages: AIMessage[]) => {
+    setChats((prev) => ({
+      ...prev,
+      [chatId]: messages,
+    }));
+  };
+
   const sendMessage = async (chatId: string, text: string) => {
     if (!text) return;
 
-    // add user message
+    const userMessage: AIMessage = { sender: "user", text };
+
     setChats((prev) => ({
       ...prev,
-      [chatId]: [...(prev[chatId] || []), { sender: "user", text }],
+      [chatId]: [...(prev[chatId] || []), userMessage],
     }));
 
     setIsSending(true);
 
     try {
+      // Backend handles history now, but we pass current state for consistency
       const aiReply = await sendAIMessage(text, chats[chatId] || []);
+
+      const aiMessage: AIMessage = { sender: "ai", text: aiReply };
+
       setChats((prev) => ({
         ...prev,
-        [chatId]: [...(prev[chatId] || []), { sender: "ai", text: aiReply }],
+        [chatId]: [...(prev[chatId] || []), aiMessage],
       }));
     } catch (err) {
       console.error("AI error:", err);
@@ -38,13 +49,7 @@ export function useAIChat() {
     }
   };
 
-  const getMessages = (chatId: string) => {
-    return chats[chatId] || [];
-  };
+  const getMessages = (chatId: string) => chats[chatId] || [];
 
-  const startNewChat = (chatId: string) => {
-    setChats((prev) => ({ ...prev, [chatId]: [] }));
-  };
-
-  return { sendMessage, getMessages, startNewChat, isSending };
+  return { sendMessage, getMessages, isSending, setMessages };
 }

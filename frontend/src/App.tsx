@@ -31,11 +31,15 @@ const App = () => {
           element={!user ? <Login /> : <Navigate to="/" />}
         />
 
-        {/* Poora Dashboard ek hi layout mein */}
-        <Route
-          path="/"
-          element={user ? <MainLayout /> : <Navigate to="/login" />}
-        />
+        {/* Protected Routes */}
+        {user ? (
+          <Route path="/" element={<MainLayout />}>
+            {/* Child route for specific chat */}
+            <Route path="chat/:chatId" element={<MainLayout />} />
+          </Route>
+        ) : (
+          <Route path="*" element={<Navigate to="/login" />} />
+        )}
       </Routes>
     </Router>
   );

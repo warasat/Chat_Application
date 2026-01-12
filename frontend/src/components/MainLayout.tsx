@@ -1,34 +1,57 @@
-import { useState } from "react";
+// MainLayout.tsx
+import { useState, useEffect } from "react";
+// useLocation ko yahan se hata diya gaya hai warning fix karne ke liye
+import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import ChatPage from "../pages/ChatPage";
 import { useAuth } from "../context/AuthContext";
 import type { User } from "../types/user";
+import { AI_CONTACT } from "../constants/AIContact";
 
-// Static AI contact
-const AI_CONTACT: User = {
-  _id: "65a1234567890abcdef12345",
-  username: "ChatApp_AI",
-  phoneNumber: "0000000000",
-  isBot: true,
-  profilePic:
-    "https://cdn.pixabay.com/photo/2023/06/23/02/01/ai-generated-8082571_1280.png",
-  isOnline: "string",
-};
+// ... AI_CONTACT constant same rahega
 
 const MainLayout = () => {
   const { user } = useAuth();
+  const { chatId } = useParams();
+  const navigate = useNavigate();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [allContacts, setAllContacts] = useState<User[]>([]);
 
-  const handleAIChat = () => setSelectedUser(AI_CONTACT);
+  const handleContactsLoaded = (contacts: User[]) => {
+    setAllContacts(contacts);
+  };
+
+  const handleSelectUser = (contactUser: User) => {
+    setSelectedUser(contactUser);
+    navigate(`/chat/${contactUser._id}`);
+  };
+
+  const handleAIChat = () => {
+    setSelectedUser(AI_CONTACT);
+    navigate(`/chat/${AI_CONTACT._id}`);
+  };
+
+  // Logic to restore state on refresh
+  useEffect(() => {
+    if (chatId) {
+      if (chatId === AI_CONTACT._id) {
+        setSelectedUser(AI_CONTACT);
+      } else if (allContacts.length > 0) {
+        const foundUser = allContacts.find((u) => u._id === chatId);
+        if (foundUser) setSelectedUser(foundUser);
+      }
+    }
+  }, [chatId, allContacts]);
 
   return (
     <div className="flex h-screen w-full bg-white overflow-hidden">
-      <div className="w-80 flex flex-col bg-white overflow-visible border-r border-gray-100 shadow-sm z-10">
+      <div className="w-80 flex flex-col bg-white border-r border-gray-100 shadow-sm z-10">
         <Header />
         <Sidebar
-          onSelectUser={(contactUser) => setSelectedUser(contactUser)}
+          onSelectUser={handleSelectUser}
           onAIChat={handleAIChat}
+          onContactsFetch={handleContactsLoaded}
         />
       </div>
 
@@ -45,13 +68,7 @@ const MainLayout = () => {
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-gray-400">
-            <div className="w-24 h-24 bg-gray-200 rounded-full flex items-center justify-center mb-4 text-4xl">
-              💬
-            </div>
             <p className="text-xl font-medium text-gray-600">ChatApp Web</p>
-            <p className="text-sm">
-              Select a contact or start ChatApp_AI conversation
-            </p>
           </div>
         )}
       </div>

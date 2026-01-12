@@ -10,9 +10,10 @@ import { AI_CONTACT } from "../constants/AIContact";
 interface SidebarProps {
   onSelectUser: (user: User) => void;
   onAIChat: () => void;
+  onContactsFetch?: (contacts: User[]) => void;
 }
 
-const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
+const Sidebar = ({ onSelectUser, onAIChat, onContactsFetch }: SidebarProps) => {
   const { user: loginUser, addContactAction, authLoading } = useAuth();
   const { users, loading, setUsers } = useUsers(loginUser?._id);
 
@@ -21,6 +22,25 @@ const Sidebar = ({ onSelectUser, onAIChat }: SidebarProps) => {
   const [newPhone, setNewPhone] = useState("");
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/users`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        });
+        const data = await res.json();
+
+        // Jab contacts fetch ho jayein, MainLayout ko bhej dein
+        if (onContactsFetch) {
+          onContactsFetch(data);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchContacts();
+  }, []);
 
   // Listen for when someone adds you
   useEffect(() => {

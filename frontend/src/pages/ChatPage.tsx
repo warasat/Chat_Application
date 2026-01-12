@@ -38,7 +38,46 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     sendMessage: sendAIMessage,
     getMessages,
     isSending: isAISending,
+    setMessages: setAIMessages, // Added this from useAIChat
   } = useAIChat();
+
+  // ChatPage.tsx ke andar useEffect update karein
+  useEffect(() => {
+    if (receiver.isBot) {
+      const fetchAIHistory = async () => {
+        try {
+          const res = await fetch(
+            `${import.meta.env.VITE_API_URL}/ai/${currentUserId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            }
+          );
+          const data = await res.json();
+          if (data.messages) {
+            // 1. Pehle data ko map karein
+            let formattedMessages = data.messages.map((m: any) => ({
+              sender: m.sender_id === currentUserId ? "user" : "ai",
+              text: m.content,
+              time: m.message_time, // Timestamp store karein sorting ke liye
+            }));
+
+            // 2. Sorting logic: Time ke mutabiq purane messages upar, naye niche
+            formattedMessages.sort(
+              (a: any, b: any) =>
+                new Date(a.time).getTime() - new Date(b.time).getTime()
+            );
+
+            setAIMessages(chatId, formattedMessages);
+          }
+        } catch (err) {
+          console.error("Failed to fetch AI history:", err);
+        }
+      };
+      fetchAIHistory();
+    }
+  }, [receiver.isBot, currentUserId, chatId, setAIMessages]);
 
   // decide which messages to show: normal user chat or AI
   const chatMessages = receiver.isBot ? getMessages(chatId) : messages;
@@ -255,7 +294,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
           disabled={isRecording || uploading || isSending || isAISending}
           placeholder={
             isRecording
-              ? "Recording voice..."
+              ? `Recording voice... ${recordingTime}s`
               : isSending || isAISending
               ? "Sending..."
               : uploading
