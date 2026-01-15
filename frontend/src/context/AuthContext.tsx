@@ -2,26 +2,7 @@ import { createContext, useContext, useState, useEffect } from "react";
 import API from "../services/api";
 import type { User } from "../types/user";
 import socket from "../services/socket";
-
-interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  authLoading: boolean;
-  loginAction: (
-    phoneNumber: string
-  ) => Promise<{ success: boolean; message?: string }>;
-  registerAction: (
-    username: string,
-    phoneNumber: string,
-    profilePic: File | null // 🔹 New parameter
-  ) => Promise<{ success: boolean; message?: string }>;
-  addContactAction: (
-    currentUserId: string,
-    phoneNumber: string
-  ) => Promise<{ success: boolean; message?: string; contact?: User }>;
-  updateUser: (updatedUser: User) => void;
-  logout: () => void;
-}
+import type { AuthContextType } from "../types/authContext";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -80,7 +61,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       formData.append("phoneNumber", phoneNumber);
 
       if (profilePic) {
-        formData.append("profilePic", profilePic); // "profilePic" match with backend upload.single
+        formData.append("profilePic", profilePic);
       }
 
       await API.post("/auth/register", formData, {

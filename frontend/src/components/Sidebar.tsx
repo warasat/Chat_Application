@@ -95,6 +95,51 @@ const Sidebar = ({ onSelectUser, onAIChat, onContactsFetch }: SidebarProps) => {
     const phoneMatch = u.phoneNumber?.includes(term);
     return usernameMatch || phoneMatch;
   });
+  useEffect(() => {
+    const handleVoiceSearch = (event: any) => {
+      const voiceInput = event.detail?.name?.toLowerCase().trim();
+
+      if (voiceInput && voiceInput.length >= 3) {
+        console.log("Sidebar searching for match:", voiceInput);
+
+        // 1. Search bar update karein
+        setSearchTerm(voiceInput);
+
+        // 2. Smart Matching Logic:
+        // Pehle exact match check karein, phir shuru ke 3 letters (Prefix match)
+        const voicePrefix = voiceInput.substring(0, 3);
+
+        const matchedUser = allContacts.find((u) => {
+          const username = u.username?.toLowerCase() || "";
+
+          // Check 1: Kya voice input username ke andar hai? (ali in ali_khan)
+          const isIncluded = username.includes(voiceInput);
+
+          // Check 2: Kya username voice input ke andar hai? (ali_khan in ali)
+          const reverseInclude = voiceInput.includes(username);
+
+          // Check 3: Kya shuru ke 3 letters match karte hain? (sea in seatle)
+          const prefixMatch = username.startsWith(voicePrefix);
+
+          return isIncluded || reverseInclude || prefixMatch;
+        });
+
+        if (matchedUser) {
+          console.log("Match Found via Smart Search:", matchedUser.username);
+          handleSelectUser(matchedUser);
+        } else {
+          console.warn(
+            "No user in sidebar matches even with prefix:",
+            voiceInput
+          );
+        }
+      }
+    };
+
+    window.addEventListener("voice-search-user", handleVoiceSearch);
+    return () =>
+      window.removeEventListener("voice-search-user", handleVoiceSearch);
+  }, [allContacts]);
 
   if (loading) return <div className="p-4">Loading chats...</div>;
 

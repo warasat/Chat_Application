@@ -13,6 +13,7 @@ import messageRoutes from "./routes/message.route.js";
 import notificationRoutes from "./routes/notificaton.route.js";
 import uploadRoutes from "./routes/upload.route.js";
 import AIRoutes from "./routes/ai.route.js";
+import { connectMCP } from "./services/mcpClient.js";
 
 connectDB();
 connectCassandra();
@@ -36,4 +37,21 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT;
-server.listen(PORT, () => console.log(` Server running on port ${PORT}`));
+
+const startServer = async () => {
+  try {
+    await connectMCP();
+
+    server.listen(PORT, () => {
+      console.log(` Server running on port ${PORT}`);
+      console.log(` AI Bot is ready with MCP Tools`);
+    });
+  } catch (error) {
+    console.error(
+      " Failed to start server due to MCP connection error:",
+      error
+    );
+  }
+};
+
+startServer();

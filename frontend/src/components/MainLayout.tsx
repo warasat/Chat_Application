@@ -1,6 +1,4 @@
-// MainLayout.tsx
 import { useState, useEffect } from "react";
-// useLocation ko yahan se hata diya gaya hai warning fix karne ke liye
 import { useParams, useNavigate } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
@@ -9,14 +7,35 @@ import { useAuth } from "../context/AuthContext";
 import type { User } from "../types/user";
 import { AI_CONTACT } from "../constants/AIContact";
 
-// ... AI_CONTACT constant same rahega
+// Voice imports
+import { useVoiceCommand } from "react-voice-action-router";
+import VoiceController from "./VoiceController";
+import UniversalMic from "./UniversalMic";
 
-const MainLayout = () => {
+const MainLayoutContent = () => {
   const { user } = useAuth();
   const { chatId } = useParams();
   const navigate = useNavigate();
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [allContacts, setAllContacts] = useState<User[]>([]);
+
+  useVoiceCommand({
+    id: "search_user",
+    description: "Search for a user",
+    phrase: "search",
+    action: () => {
+      console.log("Voice search command executed by library");
+    },
+  });
+  useVoiceCommand({
+    id: "send_message",
+    description: "Send a message to the current chat",
+    phrase: "send message",
+    action: () => {
+      console.log("Voice send message triggered");
+      window.dispatchEvent(new CustomEvent("voice-send-message"));
+    },
+  });
 
   const handleContactsLoaded = (contacts: User[]) => {
     setAllContacts(contacts);
@@ -32,7 +51,6 @@ const MainLayout = () => {
     navigate(`/chat/${AI_CONTACT._id}`);
   };
 
-  // Logic to restore state on refresh
   useEffect(() => {
     if (chatId) {
       if (chatId === AI_CONTACT._id) {
@@ -45,7 +63,7 @@ const MainLayout = () => {
   }, [chatId, allContacts]);
 
   return (
-    <div className="flex h-screen w-full bg-white overflow-hidden">
+    <div className="flex h-screen w-full bg-white overflow-hidden relative">
       <div className="w-80 flex flex-col bg-white border-r border-gray-100 shadow-sm z-10">
         <Header />
         <Sidebar
@@ -68,11 +86,25 @@ const MainLayout = () => {
           />
         ) : (
           <div className="h-full flex flex-col items-center justify-center text-gray-400">
-            <p className="text-xl font-medium text-gray-600">ChatApp Web</p>
+            <p className="text-xl font-medium text-gray-600">
+              Select a chat to start messaging
+            </p>
           </div>
         )}
       </div>
+
+      <div className="fixed bottom-6 right-6 z-50">
+        <UniversalMic />
+      </div>
     </div>
+  );
+};
+
+const MainLayout = () => {
+  return (
+    <VoiceController>
+      <MainLayoutContent />
+    </VoiceController>
   );
 };
 

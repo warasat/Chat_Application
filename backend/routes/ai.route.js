@@ -6,6 +6,7 @@ import {
   getMessagesService,
 } from "../services/message.service.js";
 import { CHAT_AI_USER } from "../constants/constants.js";
+import { analyzeVoiceIntent } from "../services/ai.service.js";
 
 const router = express.Router();
 
@@ -37,17 +38,23 @@ router.post("/chat", protect, async (req, res) => {
     }));
 
     // 3. AI se reply lein
-    const aiReply = await sendToClaude(message, formattedHistory);
+    const result = await sendToClaude(message, formattedHistory, userId);
 
-    // 4. AI ka reply Cassandra mein save karein
-    await sendMessageService({
-      chatId: aiChatId,
-      senderId: CHAT_AI_USER.id, // Bot ki constant ID
-      content: aiReply,
-      type: "text",
+    if (result.text && result.text.trim() !== "") {
+      await sendMessageService({
+        chatId: aiChatId,
+        senderId: CHAT_AI_USER.id,
+        content: result.text,
+        type: "text",
+      });
+    }
+
+    // Response hamesha bhejien, chahe reply khali ho
+    res.status(200).json({
+      reply: result.text,
+      action: result.action,
+      data: result.data,
     });
-
-    res.status(200).json({ reply: aiReply });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -63,6 +70,30 @@ router.get("/:userId", protect, async (req, res) => {
     res.json({ messages });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch AI messages" });
+  }
+});
+
+router.post("/voice-intent", protect, async (req, res) => {
+  const { transcript, commands } = req.body;
+  const userId = req.user._id.toString();
+
+  if (!transcript)
+    return res.status(400).json({ error: "Transcript required" });
+
+  try {
+    /* Aapko apne ai.service.js mein ek naya function 'analyzeVoiceIntent' banana hoga 
+       jo transcript aur available commands ko Claude ko bhej kar matching commandId nikale.
+    */
+    const result = await analyzeVoiceIntent(transcript, commands, userId);
+
+    // Frontend (VoiceController) ko commandId aur params chahiye
+    res.status(200).json({
+      commandId: result.commandId, // e.g., "search_user"
+      params: result.params, // e.g., { name: "Zeeshan" }
+    });
+  } catch (error) {
+    console.error("Voice Intent Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
