@@ -4,6 +4,7 @@ import { PiTrashLight } from "react-icons/pi";
 import { useAuth } from "../context/AuthContext";
 import AddContactModal from "../components/AddContatctModal";
 import { useNotifications } from "../hooks/useNotifications";
+import { uploadProfilePicture } from "../services/user/uploadProfile.service";
 
 const Header = () => {
   const { logout, user, addContactAction, authLoading, updateUser } = useAuth();
@@ -23,29 +24,21 @@ const Header = () => {
 
   // 🟢 Upload new profile picture
   const handleProfileUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
     if (!file || !user?._id) return;
 
-    const formData = new FormData();
-    formData.append("image", file);
-
     try {
       setUploading(true);
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL}/users/upload-profile`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-          body: formData,
-        }
-      );
-      const data = await res.json();
+      const data = await uploadProfilePicture(file);
+
       if (data.url) {
         updateUser && updateUser({ ...user, profilePic: data.url });
         alert("Profile updated successfully!");
-      } else alert("Image upload failed");
+      } else {
+        alert("Image upload failed");
+      }
     } catch (err) {
       console.error("Profile upload error:", err);
       alert("Upload failed. Try again.");
@@ -54,7 +47,7 @@ const Header = () => {
     }
   };
 
-  // 🟣 Add new contact
+  // 🟣 Add new contact (still uses AuthContext logic)
   const handleAddContact = async () => {
     if (!newContactPhone) return alert("Please enter a phone number");
     if (!user?._id) return;
@@ -146,11 +139,7 @@ const Header = () => {
                 </p>
               ) : (
                 notifications.map((notif) => {
-                  const sender = notif.sender; // always defined now
-                  console.log("Rendering notification:", notif);
-                  console.log("Sender object:", sender);
-                  console.log("Profile Pic URL:", sender?.profilePic);
-
+                  const sender = notif.sender;
                   return (
                     <div
                       key={notif._id}
@@ -161,7 +150,6 @@ const Header = () => {
                           : "bg-white hover:bg-gray-50"
                       }`}
                     >
-                      {/* Avatar */}
                       <div className="shrink-0 w-9 h-9 rounded-full bg-purple-600 text-white flex items-center justify-center font-semibold text-sm uppercase">
                         {sender?.profilePic ? (
                           <img
@@ -174,7 +162,6 @@ const Header = () => {
                         )}
                       </div>
 
-                      {/* Message */}
                       <div className="flex-1">
                         <p className="text-gray-600 text-xs">{notif.message}</p>
                         <p className="text-gray-400 text-[10px] mt-1">
@@ -182,7 +169,6 @@ const Header = () => {
                         </p>
                       </div>
 
-                      {/* Delete button */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

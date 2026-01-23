@@ -1,8 +1,12 @@
 import { createContext, useContext, useState, useEffect } from "react";
-import API from "../services/api";
-import type { User } from "../types/user";
 import socket from "../services/socket";
+import type { User } from "../types/user";
 import type { AuthContextType } from "../types/authContext";
+import {
+  loginUser,
+  registerUser,
+  addContact,
+} from "../services/auth/auth.service";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -31,52 +35,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const loginAction = async (phoneNumber: string) => {
     setAuthLoading(true);
     try {
-      const res = await API.post("/auth/login", { phoneNumber });
-      const { user: userData, token } = res.data.data;
+      const { user: userData, token } = await loginUser(phoneNumber);
 
       localStorage.setItem("user", JSON.stringify(userData));
       localStorage.setItem("token", token);
       setUser(userData);
 
       socket.emit("set_session", { senderId: userData._id });
+
       return { success: true };
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || "Login failed.";
-      return { success: false, message: errorMsg };
+      const message = err.response?.data?.message || "Login failed.";
+      return { success: false, message };
     } finally {
       setAuthLoading(false);
     }
   };
 
-  // 🔹 Updated Register Action to handle FormData
   const registerAction = async (
     username: string,
     phoneNumber: string,
-    profilePic: File | null
+    profilePic: File | null,
   ) => {
     setAuthLoading(true);
     try {
-      const formData = new FormData();
-      formData.append("username", username);
-      formData.append("phoneNumber", phoneNumber);
-
-      if (profilePic) {
-        formData.append("profilePic", profilePic);
-      }
-
-      await API.post("/auth/register", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
+      await registerUser(username, phoneNumber, profilePic);
       return { success: true };
     } catch (err: any) {
-      const errorMsg =
+      const message =
         err.response?.data?.message ||
         err.response?.data?.error ||
         "Registration failed";
-      return { success: false, message: errorMsg };
+      return { success: false, message };
     } finally {
       setAuthLoading(false);
     }
@@ -84,22 +74,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const addContactAction = async (
     currentUserId: string,
-    phoneNumber: string
+    phoneNumber: string,
   ) => {
     setAuthLoading(true);
     try {
-      const res = await API.post("/users/add-contact", {
-        phoneNumber,
-        currentUserId,
-      });
-      return {
-        success: true,
-        message: res.data.message,
-        contact: res.data.contact,
-      };
+      const { message, contact } = await addContact(currentUserId, phoneNumber);
+      return { success: true, message, contact };
     } catch (err: any) {
-      const errorMsg = err.response?.data?.message || "User not found";
-      return { success: false, message: errorMsg };
+      const message = err.response?.data?.message || "User not found";
+      return { success: false, message };
     } finally {
       setAuthLoading(false);
     }

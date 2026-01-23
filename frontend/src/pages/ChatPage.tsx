@@ -1,12 +1,18 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, Mic, Square, Camera, X } from "lucide-react";
 import { useChat } from "../hooks/useChat";
-import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+// import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
 import { useAIChat } from "../hooks/useAIChat";
 import type { User } from "../types/user";
 import MessageBubble from "../components/MessageBubble";
 import CameraModal from "../components/CameraModal";
 import ImageModal from "../components/ImageModal";
+import { useFetchAIHistory } from "../hooks/useFetchAIHistory";
+import { useVoiceSendListener } from "../hooks/useVoiceSendListener";
+import { useSendMessage } from "../hooks/useSendMessage";
+import { useImageModal } from "../hooks/useImageModal";
+import { useCameraHandler } from "../hooks/useCameraHandler";
+import { useVoiceChat } from "../hooks/useVoiceChat";
 
 interface ChatPageProps {
   chatId: string;
@@ -17,10 +23,6 @@ interface ChatPageProps {
 const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
   const [input, setInput] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [showCameraOptions, setShowCameraOptions] = useState(false);
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -38,151 +40,63 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     sendMessage: sendAIMessage,
     getMessages,
     isSending: isAISending,
-    setMessages: setAIMessages, // Added this from useAIChat
+    setMessages: setAIMessages,
   } = useAIChat();
 
-  // ChatPage.tsx ke andar useEffect update karein
-  useEffect(() => {
-    if (receiver.isBot) {
-      const fetchAIHistory = async () => {
-        try {
-          const res = await fetch(
-            `${import.meta.env.VITE_API_URL}/ai/${currentUserId}`,
-            {
-              headers: {
-                Authorization: `Bearer ${localStorage.getItem("token")}`,
-              },
-            }
-          );
-          const data = await res.json();
-          if (data.messages) {
-            // 1. Pehle data ko map karein
-            let formattedMessages = data.messages.map((m: any) => ({
-              sender: m.sender_id === currentUserId ? "user" : "ai",
-              text: m.content,
-              time: m.message_time, // Timestamp store karein sorting ke liye
-            }));
-
-            // 2. Sorting logic: Time ke mutabiq purane messages upar, naye niche
-            formattedMessages.sort(
-              (a: any, b: any) =>
-                new Date(a.time).getTime() - new Date(b.time).getTime()
-            );
-
-            setAIMessages(chatId, formattedMessages);
-          }
-        } catch (err) {
-          console.error("Failed to fetch AI history:", err);
-        }
-      };
-      fetchAIHistory();
-    }
-  }, [receiver.isBot, currentUserId, chatId, setAIMessages]);
-  useEffect(() => {
-    const handleVoiceSend = async (event: any) => {
-      const voiceText = event.detail;
-      if (!voiceText) return;
-
-      console.log("🚀 ChatPage received voice text:", voiceText);
-
-      // AI message ya user message decide karke bhej dena
-      setIsSending(true);
-      try {
-        if (receiver.isBot) {
-          await sendAIMessage(chatId, voiceText);
-        } else {
-          await sendUserMessage(voiceText, "text");
-        }
-      } catch (err) {
-        console.error("Voice send failed:", err);
-      } finally {
-        setIsSending(false);
-      }
-    };
-
-    // Event listener register karna
-    window.addEventListener("voice-send-message", handleVoiceSend);
-
-    // Cleanup function
-    return () => {
-      window.removeEventListener("voice-send-message", handleVoiceSend);
-    };
-  }, [chatId, receiver, sendAIMessage, sendUserMessage]);
+  useFetchAIHistory({
+    isBot: receiver.isBot,
+    currentUserId,
+    chatId,
+    setAIMessages,
+  });
+  useVoiceSendListener({
+    chatId,
+    receiver,
+    sendAIMessage,
+    sendUserMessage,
+    setIsSending,
+  });
 
   // decide which messages to show: normal user chat or AI
-  const chatMessages = receiver.isBot ? getMessages(chatId) : messages;
-
-  const { isRecording, startRecording, stopRecording } = useVoiceRecorder(
-    async (audioUrl) => {
-      try {
-        setIsSending(true);
-        if (receiver.isBot) await sendAIMessage(chatId, audioUrl);
-        else await sendUserMessage(audioUrl, "audio");
-      } finally {
-        setIsSending(false);
-      }
-    }
-  );
+  const { chatMessages, isRecording, startRecording, stopRecording } =
+    useVoiceChat({
+      receiver,
+      chatId,
+      sendAIMessage,
+      sendUserMessage,
+      setIsSending,
+      messages,
+      getMessages,
+    });
 
   // --- Image Modal ---
-  const imageMessages = chatMessages.filter((m: any) => m.type === "image");
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-
-  const handleOpenImageModal = (url: string) => {
-    const index = imageMessages.findIndex((m) => m.content === url);
-    if (index === -1) return;
-    setCurrentImageIndex(index);
-    setIsImageModalOpen(true);
-  };
-
+  const {
+    imageMessages,
+    isImageModalOpen,
+    currentImageIndex,
+    openImageModal,
+    closeImageModal,
+    setCurrentImageIndex,
+  } = useImageModal(chatMessages);
   // --- Scroll to bottom on new message ---
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
   // --- Send handler ---
+  const { sendMessage, uploading } = useSendMessage({
+    chatId,
+    receiverId: receiver.isBot ? "bot" : receiver._id,
+    sendUserMessage,
+    sendAIMessage,
+    setIsSending,
+  });
+
+  // Wrapper for JSX
   const handleSend = async () => {
-    if (!input.trim() && !selectedFile) return;
-
-    let content = input;
-
-    if (selectedFile) {
-      setUploading(true);
-      const formData = new FormData();
-      formData.append("image", selectedFile);
-
-      try {
-        const res = await fetch(
-          `${import.meta.env.VITE_API_URL}/messages/upload-image`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
-            },
-            body: formData,
-          }
-        );
-        const data = await res.json();
-        if (data.url) content = data.url;
-        else throw new Error("Image upload failed");
-      } catch (err) {
-        console.error("Upload error:", err);
-        setUploading(false);
-        return;
-      }
-
-      setUploading(false);
-      setSelectedFile(null);
-    }
-
+    await sendMessage(input, "text", selectedFile ?? undefined);
     setInput("");
-    setIsSending(true);
-
-    if (receiver.isBot) await sendAIMessage(chatId, content);
-    else sendUserMessage(content, selectedFile ? "image" : "text");
-
-    setIsSending(false);
+    setSelectedFile(null);
   };
 
   // --- File selection ---
@@ -194,16 +108,14 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
   };
 
   // --- Camera ---
-  const openCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      setCameraStream(stream);
-      setCameraOpen(true);
-      setShowCameraOptions(false);
-    } catch (err) {
-      console.error("Cannot access camera", err);
-    }
-  };
+  const {
+    cameraOpen,
+    cameraStream,
+    showCameraOptions,
+    setShowCameraOptions,
+    openCamera,
+    closeCamera,
+  } = useCameraHandler();
 
   return (
     <div className="flex flex-col h-full bg-[#f3f4f6] relative">
@@ -254,7 +166,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
                   : m
               }
               currentUserId={currentUserId}
-              onImageClick={handleOpenImageModal}
+              onImageClick={openImageModal}
             />
           ))}
           <div ref={scrollRef} />
@@ -327,10 +239,10 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
               isRecording
                 ? `Recording voice... ${recordingTime}s`
                 : isSending || isAISending
-                ? "Sending..."
-                : uploading
-                ? "Uploading image..."
-                : "Type a message"
+                  ? "Sending..."
+                  : uploading
+                    ? "Uploading image..."
+                    : "Type a message"
             }
             className="flex-1 p-2 px-4 bg-gray-100 rounded-full outline-none text-sm"
           />
@@ -384,21 +296,15 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
           stream={cameraStream}
           onCapture={(file) => {
             setSelectedFile(file);
-            setCameraOpen(false);
-            cameraStream?.getTracks().forEach((t) => t.stop());
-            setCameraStream(null);
+            closeCamera();
           }}
-          onClose={() => {
-            setCameraOpen(false);
-            cameraStream?.getTracks().forEach((t) => t.stop());
-            setCameraStream(null);
-          }}
+          onClose={closeCamera}
         />
 
         {/* IMAGE MODAL */}
         <ImageModal
           isOpen={isImageModalOpen}
-          onClose={() => setIsImageModalOpen(false)}
+          onClose={closeImageModal}
           images={imageMessages.map((m: any) => m.content)}
           currentIndex={currentImageIndex}
           onChangeIndex={setCurrentImageIndex}

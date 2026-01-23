@@ -5,69 +5,83 @@ export const useVoiceRecorder = (onSave: (audioUrl: string) => void) => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  // Start recording
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      const mediaRecorder = new MediaRecorder(stream);
+      // Check available types
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
+        if (e.data && e.data.size > 0) {
           audioChunksRef.current.push(e.data);
+          // Debugging: Size check karein console mein
+          console.log("Chunk received size:", e.data.size);
         }
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, {
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        console.log("FINAL Total Blob Size:", audioBlob.size);
+
+        // AGAR SIZE 5000 (5KB) SE KAM HAI TOH UPLOAD NA KAREIN
+        if (audioBlob.size < 2000) {
+          console.error(
+            "Recording too small, mic might be muted or not capturing."
+          );
+          return;
+        }
+
+        const formData = new FormData();
+        const audioFile = new File([audioBlob], `voice-${Date.now()}.webm`, {
           type: "audio/webm",
         });
-        const formData = new FormData();
-        formData.append("audio", audioBlob, `voice-${Date.now()}.webm`);
+        formData.append("audio", audioFile);
 
         try {
-          // Upload to backend
           const token = localStorage.getItem("token");
           const res = await fetch(
             `${import.meta.env.VITE_API_URL}/messages/upload-audio`,
             {
               method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
+              headers: { Authorization: `Bearer ${token}` },
               body: formData,
             }
           );
 
           const data = await res.json();
-          if (data.url) {
-            onSave(data.url);
-          } else {
-            console.error("Audio upload failed", data);
-          }
+          if (data.url) onSave(data.url);
         } catch (err) {
-          console.error("Audio upload error:", err);
+          console.error("Upload error:", err);
         }
       };
 
-      mediaRecorder.start();
+      // CRITICAL FIX: 200ms slices dein taake data flow hota rahe
+      mediaRecorder.start(200);
       setIsRecording(true);
     } catch (err) {
-      console.error("Mic access denied or unavailable:", err);
+      console.error("Mic Error:", err);
     }
   }, [onSave]);
 
-  // Stop recording
   const stopRecording = useCallback(() => {
-    if (!mediaRecorderRef.current) return;
-
-    mediaRecorderRef.current.stop();
-    mediaRecorderRef.current.stream
-      .getTracks()
-      .forEach((track) => track.stop());
-    setIsRecording(false);
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state !== "inactive"
+    ) {
+      // Chota sa delay taake aakhri data chunk capture ho jaye
+      setTimeout(() => {
+        mediaRecorderRef.current?.stop();
+        mediaRecorderRef.current?.stream.getTracks().forEach((t) => t.stop());
+        setIsRecording(false);
+      }, 200);
+    }
   }, []);
 
   return { isRecording, startRecording, stopRecording };
