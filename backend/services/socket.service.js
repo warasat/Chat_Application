@@ -101,17 +101,28 @@ export const initSocket = (server) => {
     // 1️⃣ Caller starts call
     socket.on("call-user", ({ chatId, from, offer, phoneNumber }) => {
       const callRoom = `call_${chatId}`;
-      const isOnline = Array.from(io.sockets.sockets.values()).some(
-        (s) => s.senderId === from,
-      );
-      // check if receiver is online
+      console.log(`📞 Call offer from ${from} to call room ${callRoom}`);
 
+      // ✅ Find if the receiver is online
+      const receiverSocket = Array.from(io.sockets.sockets.values()).find(
+        (s) => s.senderId !== from && s.rooms.has(callRoom),
+      );
+      const isOnline = !!receiverSocket;
+
+      // Send incoming call event to receiver
       io.to(callRoom).emit("incoming-call", {
         from,
         offer,
         phoneNumber,
         isOnline,
       });
+
+      // ✅ Also notify the caller directly about receiver’s current status
+      io.to(from).emit("call-status", { isOnline });
+
+      console.log(
+        `📡 ${isOnline ? "Receiver online (Ringing)" : "Receiver offline (Calling)"}`,
+      );
     });
 
     // 2️⃣ Callee answers call

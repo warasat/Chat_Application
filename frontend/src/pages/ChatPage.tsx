@@ -127,6 +127,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
   // --- Audio Call Hook ---
   const {
     inCall,
+    isCaller,
     incomingCall,
     localStream,
     remoteStream,
@@ -135,6 +136,8 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     rejectCall,
     endCall,
     callDuration,
+    receiverOnline,
+    callStatus,
   } = useAudioCall({
     currentUserId,
     // receiverId: receiver._id,
@@ -344,20 +347,23 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
         />
 
         {/* INCOMING CALL POPUP */}
-        {incomingCall && (
+        {incomingCall && !inCall && (
           <CallModal
             callerPhoneNumber={incomingCall.phoneNumber}
+            isOnline={incomingCall.isOnline}
             onAccept={acceptCall}
             onReject={rejectCall}
           />
         )}
-
-        {/* IN-CALL SCREEN */}
+        {/* Call screen */}
         {inCall && (
           <InCallScreen
+            callStatus={callStatus}
             localStream={localStream}
             remoteStream={remoteStream}
-            callDuration={callDuration} // 🔹 pass timer here
+            callDuration={callDuration}
+            receiverOnline={receiverOnline}
+            isCaller={isCaller}
             onEnd={endCall}
           />
         )}
