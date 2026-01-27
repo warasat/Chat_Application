@@ -13,11 +13,17 @@ import { useSendMessage } from "../hooks/useSendMessage";
 import { useImageModal } from "../hooks/useImageModal";
 import { useCameraHandler } from "../hooks/useCameraHandler";
 import { useVoiceChat } from "../hooks/useVoiceChat";
+import { useAudioCall } from "../hooks/useAudioCall";
+import CallModal from "../components/CallModal";
+import InCallScreen from "../components/InCallScreen";
+import { IoCallOutline } from "react-icons/io5";
+import { useAuth } from "../context/AuthContext";
 
 interface ChatPageProps {
   chatId: string;
   currentUserId: string;
   receiver: User;
+  phoneNumber: string;
 }
 
 const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
@@ -28,6 +34,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
   const [isSending, setIsSending] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { user: currentUser } = useAuth();
 
   // --- Hooks ---
   const {
@@ -117,6 +124,24 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     closeCamera,
   } = useCameraHandler();
 
+  // --- Audio Call Hook ---
+  const {
+    inCall,
+    incomingCall,
+    localStream,
+    remoteStream,
+    startCall,
+    acceptCall,
+    rejectCall,
+    endCall,
+    callDuration,
+  } = useAudioCall({
+    currentUserId,
+    // receiverId: receiver._id,
+    chatId,
+    phoneNumber: currentUser!.phoneNumber,
+  });
+
   return (
     <div className="flex flex-col h-full bg-[#f3f4f6] relative">
       <div className="flex flex-col h-full bg-[#f3f4f6] relative">
@@ -148,6 +173,14 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
               {isOnline ? "Online" : "Offline"}
             </span>
           </div>
+          {!receiver.isBot && (
+            <button
+              onClick={startCall}
+              className="ml-auto bg-black cursor-pointer text-white px-3 py-1 rounded-full text-xl transition"
+            >
+              <IoCallOutline />
+            </button>
+          )}
         </div>
 
         {/* MESSAGES */}
@@ -309,6 +342,25 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
           currentIndex={currentImageIndex}
           onChangeIndex={setCurrentImageIndex}
         />
+
+        {/* INCOMING CALL POPUP */}
+        {incomingCall && (
+          <CallModal
+            callerPhoneNumber={incomingCall.phoneNumber}
+            onAccept={acceptCall}
+            onReject={rejectCall}
+          />
+        )}
+
+        {/* IN-CALL SCREEN */}
+        {inCall && (
+          <InCallScreen
+            localStream={localStream}
+            remoteStream={remoteStream}
+            callDuration={callDuration} // 🔹 pass timer here
+            onEnd={endCall}
+          />
+        )}
       </div>
     </div>
   );
