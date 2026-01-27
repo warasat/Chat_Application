@@ -1,5 +1,6 @@
 import { Server } from "socket.io";
 import { client as cassandraClient } from "../config/cassandra.js";
+import { registerCallHandlers } from "../handlers/audioCall.handler.js";
 
 let io;
 
@@ -11,39 +12,29 @@ export const initSocket = (server) => {
   io.on("connection", (socket) => {
     console.log(`⚡ Connection Open: ${socket.id}`);
 
-    // --- SESSION SET ---
+    // --- SESSION SETUP ---
     socket.on("set_session", (data) => {
       const userRoom = data.senderId || data.sender_id;
       const chatId = data.chatId || data.chat_id;
 
       if (userRoom) {
         socket.senderId = userRoom;
-        socket.join(userRoom); // personal room
+        socket.join(userRoom);
       }
 
       if (chatId) {
         socket.join(chatId);
         const callRoom = `call_${chatId}`;
-        socket.join(callRoom); // chat-specific call room
-        console.log(`✅ User ${userRoom} joined call room ${callRoom}`);
+        socket.join(callRoom);
       }
 
-      console.log(`✅ Session: User ${userRoom} joined Room ${chatId}`);
       io.emit("user_status", { userId: userRoom, status: "online" });
     });
 
-    // --- GET USER STATUS ---
-    socket.on("get_user_status", ({ userId }) => {
-      const isOnline = Array.from(io.sockets.sockets.values()).some(
-        (s) => s.senderId === userId,
-      );
-      socket.emit("user_status", {
-        userId,
-        status: isOnline ? "online" : "offline",
-      });
-    });
+    // --- REGISTER CALL HANDLERS ---
+    registerCallHandlers(io, socket);
 
-    // --- MESSAGES ---
+    // --- MESSAGING LOGIC ---
     socket.on("message", async (data) => {
       const chat_id = data.chat_id || data.chatId;
       const sender_id = data.sender_id || data.senderId;
@@ -52,8 +43,7 @@ export const initSocket = (server) => {
       const type = data.type || "text";
       const message_time = new Date();
 
-      if (!chat_id || !sender_id)
-        return console.error("❌ chat_id or sender_id missing");
+      if (!chat_id || !sender_id) return;
 
       try {
         const query = `
@@ -81,6 +71,7 @@ export const initSocket = (server) => {
           type,
           message_time: message_time.toISOString(),
         };
+
         socket.to(chat_id).emit("receive_message", msgPayload);
 
         if (receiver_id) {
@@ -90,59 +81,9 @@ export const initSocket = (server) => {
             chatId: chat_id,
           });
         }
-
-        console.log("✅ Message saved and delivered.");
       } catch (err) {
-        console.error("❌ Cassandra/Socket Error:", err);
+        console.error("❌ Cassandra Error:", err);
       }
-    });
-
-    // --- AUDIO CALL SIGNALING ---
-    // 1️⃣ Caller starts call
-    socket.on("call-user", ({ chatId, from, offer, phoneNumber }) => {
-      const callRoom = `call_${chatId}`;
-      console.log(`📞 Call offer from ${from} to call room ${callRoom}`);
-
-      // ✅ Find if the receiver is online
-      const receiverSocket = Array.from(io.sockets.sockets.values()).find(
-        (s) => s.senderId !== from && s.rooms.has(callRoom),
-      );
-      const isOnline = !!receiverSocket;
-
-      // Send incoming call event to receiver
-      io.to(callRoom).emit("incoming-call", {
-        from,
-        offer,
-        phoneNumber,
-        isOnline,
-      });
-
-      // ✅ Also notify the caller directly about receiver’s current status
-      io.to(from).emit("call-status", { isOnline });
-
-      console.log(
-        `📡 ${isOnline ? "Receiver online (Ringing)" : "Receiver offline (Calling)"}`,
-      );
-    });
-
-    // 2️⃣ Callee answers call
-    socket.on("answer-call", ({ chatId, answer, from }) => {
-      const callRoom = `call_${chatId}`;
-      console.log(`✅ Call answered by ${from} in room ${callRoom}`);
-      io.to(callRoom).emit("call-answered", { answer, from });
-    });
-
-    // 3️⃣ Exchange ICE candidates
-    socket.on("ice-candidate", ({ chatId, candidate, from }) => {
-      const callRoom = `call_${chatId}`;
-      io.to(callRoom).emit("ice-candidate", { candidate, from });
-    });
-
-    // 4️⃣ End call
-    socket.on("end-call", ({ chatId, from }) => {
-      const callRoom = `call_${chatId}`;
-      console.log(`❌ Call ended by ${from} in room ${callRoom}`);
-      io.to(callRoom).emit("call-ended", { from });
     });
 
     // --- DISCONNECT ---

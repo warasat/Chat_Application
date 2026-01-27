@@ -26,7 +26,7 @@ export const useAudioCall = ({
 }: UseAudioCallProps) => {
   const [inCall, setInCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
-  const [isInitiator, setIsInitiator] = useState(false); // ✅ Track if THIS user started the call
+  const [isInitiator, setIsInitiator] = useState(false);
   const [callStatus, setCallStatus] = useState<
     "ringing" | "calling" | "connected"
   >("calling");
@@ -68,7 +68,7 @@ export const useAudioCall = ({
       setRemoteStream(null);
       setInCall(false);
       setIncomingCall(null);
-      setIsInitiator(false); // ✅ Reset initiator status
+      setIsInitiator(false);
       setCallDuration(0);
       setReceiverOnline(null);
 
@@ -103,7 +103,7 @@ export const useAudioCall = ({
   };
 
   const startCall = async () => {
-    setIsInitiator(true); // ✅ Explicitly mark as Caller
+    setIsInitiator(true);
     await initPeer();
     const offer = await peerRef.current!.createOffer();
     await peerRef.current!.setLocalDescription(offer);
@@ -128,7 +128,7 @@ export const useAudioCall = ({
     if (!incomingCall) return;
     const { from, offer } = incomingCall;
 
-    setIsInitiator(false); // ✅ Explicitly mark as Receiver
+    setIsInitiator(false);
     await initPeer();
     await peerRef.current!.setRemoteDescription(
       new RTCSessionDescription(offer),
@@ -157,7 +157,6 @@ export const useAudioCall = ({
 
   useEffect(() => {
     const handleIncomingCall = (data: IncomingCall) => {
-      // ✅ Don't process if the call is from ourselves
       if (data.from === currentUserId) return;
 
       setIncomingCall(data);
@@ -236,7 +235,7 @@ export const useAudioCall = ({
   return {
     inCall,
     incomingCall,
-    isCaller: isInitiator, // ✅ Return the reliable boolean
+    isCaller: isInitiator,
     callStatus,
     localStream,
     remoteStream,
