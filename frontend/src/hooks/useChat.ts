@@ -5,7 +5,7 @@ import API from "../services/api";
 export const useChat = (
   chatId: string,
   currentUserId: string,
-  receiverId: string
+  receiverId: string,
 ) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [isOnline, setIsOnline] = useState(false);
@@ -28,10 +28,22 @@ export const useChat = (
       const incomingChatId = m.chat_id || m.chatId;
       const incomingSenderId = m.sender_id || m.senderId;
 
-      // Only update if it belongs to THIS chat window
+      // 1. Check karein ke message isi chat ka hai
       if (incomingChatId === chatId) {
-        if (incomingSenderId !== currentUserId) {
-          setMessages((prev) => [...prev, m]);
+        // 2. Logic: Message add karo agar:
+        // - Message kisi aur ne bheja hai (Normal chat)
+        // - YA message ka type 'missed_call' hai (Taki caller ko bhi blob dikhe)
+        if (incomingSenderId !== currentUserId || m.type === "missed_call") {
+          setMessages((prev) => {
+            // Double safety: Check if message already exists (to avoid duplicates)
+            const isDuplicate = prev.some(
+              (msg) =>
+                msg.message_time === m.message_time && msg.type === m.type,
+            );
+
+            if (isDuplicate) return prev;
+            return [...prev, m];
+          });
         }
       }
     };

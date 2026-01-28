@@ -1,46 +1,119 @@
+import { client as cassandraClient } from "../config/cassandra.js";
+
+// Call timeouts ko track karne ke liye Map
+const activeCallTimeouts = new Map();
+
 export const registerCallHandlers = (io, socket) => {
-  //  Caller starts call
-  socket.on("call-user", ({ chatId, from, offer, phoneNumber }) => {
-    const callRoom = `call_${chatId}`;
+  // --- Helper Function to Log Missed Call in Cassandra ---
+  const logMissedCall = async (chatId, from, receiverId) => {
+    const message_time = new Date();
+    const query = `
+      INSERT INTO messages (chat_id, message_time, content, sender_id, receiver_id, type) 
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
 
-    const receiverSocket = Array.from(io.sockets.sockets.values()).find(
-      (s) => s.senderId !== from && s.rooms.has(callRoom),
-    );
+    try {
+      await cassandraClient.execute(
+        query,
+        [
+          chatId,
+          message_time,
+          "Missed Audio Call",
+          from,
+          receiverId,
+          "missed_call",
+        ],
+        { prepare: true },
+      );
 
-    const isOnline = !!receiverSocket;
+      // Live update for the chat UI
+      io.to(chatId).emit("receive_message", {
+        chat_id: chatId,
+        sender_id: from,
+        receiver_id: receiverId,
+        content: "Missed Audio Call",
+        type: "missed_call",
+        message_time: message_time.toISOString(),
+      });
+      console.log(`📝 Missed call logged for chat: ${chatId}`);
+    } catch (err) {
+      console.error("❌ Cassandra Missed Call Error:", err);
+    }
+  };
 
-    io.to(callRoom).emit("incoming-call", {
-      from,
-      offer,
-      phoneNumber,
-      isOnline,
-    });
+  // 1️⃣ Caller starts call
+  socket.on(
+    "call-user",
+    async ({ chatId, from, receiverId, offer, phoneNumber }) => {
+      const callRoom = `call_${chatId}`;
 
-    io.to(from).emit("call-status", { isOnline });
+      const receiverSocket = Array.from(io.sockets.sockets.values()).find(
+        (s) => s.senderId === receiverId,
+      );
 
-    console.log(
-      `📞 Call from ${from} in ${callRoom}. Status: ${isOnline ? "Ringing" : "Calling"}`,
-    );
-  });
+      const isOnline = !!receiverSocket;
 
-  //  Callee answers call
+      // A. User is Offline
+      if (!isOnline) {
+        console.log(
+          `📡 Receiver ${receiverId} is offline. Logging missed call.`,
+        );
+        await logMissedCall(chatId, from, receiverId);
+        io.to(from).emit("call-status", { isOnline: false });
+        return;
+      }
+
+      // B. User is Online - Proceed with ringing
+      socket.to(callRoom).emit("incoming-call", {
+        from,
+        offer,
+        phoneNumber,
+        isOnline: true,
+      });
+      io.to(from).emit("call-status", { isOnline: true });
+
+      // Start 30s timer for "No Answer"
+      const timeout = setTimeout(async () => {
+        console.log(`⏰ Call timeout for ${chatId}. Saving missed call.`);
+        await logMissedCall(chatId, from, receiverId);
+        io.to(callRoom).emit("call-ended", {
+          from: "system",
+          reason: "no-answer",
+        });
+        activeCallTimeouts.delete(chatId);
+      }, 30000);
+
+      activeCallTimeouts.set(chatId, timeout);
+    },
+  );
+
+  // 2️⃣ Callee answers call
   socket.on("answer-call", ({ chatId, answer, from }) => {
+    // Clear timeout as call is answered
+    if (activeCallTimeouts.has(chatId)) {
+      clearTimeout(activeCallTimeouts.get(chatId));
+      activeCallTimeouts.delete(chatId);
+    }
+
     const callRoom = `call_${chatId}`;
-    console.log(`✅ Call answered by ${from}`);
     io.to(callRoom).emit("call-answered", { answer, from });
   });
 
-  //  Exchange ICE candidates
-  socket.on("ice-candidate", ({ chatId, candidate, from }) => {
+  // 3️⃣ End call
+  socket.on("end-call", ({ chatId, from }) => {
+    // Clear timeout if call ended during ringing
+    if (activeCallTimeouts.has(chatId)) {
+      clearTimeout(activeCallTimeouts.get(chatId));
+      activeCallTimeouts.delete(chatId);
+    }
+
     const callRoom = `call_${chatId}`;
-    // Broadcast to the other person in the room
-    socket.to(callRoom).emit("ice-candidate", { candidate, from });
+    io.to(callRoom).emit("call-ended", { from });
   });
 
-  //  End call
-  socket.on("end-call", ({ chatId, from }) => {
+  // 4️⃣ ICE Candidates
+  socket.on("ice-candidate", ({ chatId, candidate, from }) => {
     const callRoom = `call_${chatId}`;
-    console.log(`❌ Call ended by ${from}`);
-    io.to(callRoom).emit("call-ended", { from });
+    socket.to(callRoom).emit("ice-candidate", { candidate, from });
   });
 };

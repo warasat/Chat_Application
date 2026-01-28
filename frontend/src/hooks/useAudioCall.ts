@@ -10,6 +10,7 @@ interface UseAudioCallProps {
   currentUserId: string;
   chatId: string;
   phoneNumber: string;
+  receiverId: string;
 }
 
 interface IncomingCall {
@@ -17,12 +18,14 @@ interface IncomingCall {
   offer: RTCSessionDescriptionInit;
   isOnline?: boolean;
   phoneNumber: string;
+  receiverId: string;
 }
 
 export const useAudioCall = ({
   currentUserId,
   chatId,
   phoneNumber,
+  receiverId,
 }: UseAudioCallProps) => {
   const [inCall, setInCall] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
@@ -111,6 +114,7 @@ export const useAudioCall = ({
     socket.emit("call-user", {
       chatId,
       from: currentUserId,
+      receiverId: receiverId,
       offer,
       phoneNumber,
     });

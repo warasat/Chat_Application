@@ -3,6 +3,7 @@ export interface Message {
   senderId?: string; // Support both formats
   content: string;
   receiverId: string;
-  type: "text" | "audio" | "image";
+  type: "text" | "audio" | "image" | "missed-call";
+  message_time?: string | Date;
   chat_id?: string;
 }

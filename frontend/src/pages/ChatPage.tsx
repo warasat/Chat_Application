@@ -140,7 +140,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     callStatus,
   } = useAudioCall({
     currentUserId,
-    // receiverId: receiver._id,
+    receiverId: receiver._id,
     chatId,
     phoneNumber: currentUser!.phoneNumber,
   });

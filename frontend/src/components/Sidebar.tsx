@@ -65,7 +65,7 @@ const Sidebar = ({ onSelectUser, onAIChat, onContactsFetch }: SidebarProps) => {
 
     socket.on("receive_message", (data) => {
       const senderId = data.sender_id;
-      if (senderId !== activeId) {
+      if (senderId !== loginUser._id && senderId !== activeId) {
         setUnreadCounts((prev) => ({
           ...prev,
           [senderId]: (prev[senderId] || 0) + 1,
@@ -90,9 +90,12 @@ const Sidebar = ({ onSelectUser, onAIChat, onContactsFetch }: SidebarProps) => {
 
   // Filter contacts by search term
   const filteredContacts = allContacts.filter((u) => {
+    if (u._id === loginUser?._id) return false;
+
     const term = searchTerm.toLowerCase();
     const usernameMatch = u.username.toLowerCase().includes(term);
-    const phoneMatch = u.phoneNumber?.includes(term);
+    const phoneMatch = u.phoneNumber?.includes(term) || false;
+
     return usernameMatch || phoneMatch;
   });
   useEffect(() => {
@@ -130,7 +133,7 @@ const Sidebar = ({ onSelectUser, onAIChat, onContactsFetch }: SidebarProps) => {
         } else {
           console.warn(
             "No user in sidebar matches even with prefix:",
-            voiceInput
+            voiceInput,
           );
         }
       }
