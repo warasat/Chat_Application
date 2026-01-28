@@ -1,5 +1,13 @@
 import React, { useRef, useEffect } from "react";
-import { Mic, MicOff, Phone, SignalHigh } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Phone,
+  SignalHigh,
+  Monitor,
+  MonitorOff,
+} from "lucide-react";
+import ScreenView from "./ScreenView";
 
 interface InCallScreenProps {
   localStream: MediaStream | null;
@@ -10,6 +18,10 @@ interface InCallScreenProps {
   receiverOnline?: boolean | null;
   incomingCall?: boolean;
   callStatus: "ringing" | "calling" | "connected";
+
+  isSharing: boolean;
+  remoteIsSharing: boolean;
+  onToggleScreen: () => void;
 }
 
 const InCallScreen: React.FC<InCallScreenProps> = ({
@@ -19,14 +31,17 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
   onEnd,
   isCaller = false,
   receiverOnline = null,
-  incomingCall = false,
   callStatus,
+  isSharing,
+  remoteIsSharing,
+  onToggleScreen,
 }) => {
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = React.useState(false);
 
   useEffect(() => {
+    // Audio elements for WebRTC
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream;
     }
@@ -43,72 +58,69 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
     return `${m}:${s}`;
   };
 
-  const getCallStatusText = (): string => {
-    if (callStatus === "connected" || remoteStream) {
-      return `Connected (${formatTime(callDuration)})`;
-    }
-
-    if (isCaller) {
-      if (callStatus === "ringing" || receiverOnline === true) {
-        return "Ringing...";
-      }
-
-      if (callStatus === "calling") {
-        return "Calling...";
-      }
-
-      return "Connecting...";
-    }
-
-    if (incomingCall) return "Incoming Call...";
-
-    return "Connecting...";
-  };
-
-  const statusText = getCallStatusText();
+  const statusText =
+    callStatus === "connected"
+      ? `Connected (${formatTime(callDuration)})`
+      : isCaller
+        ? callStatus === "ringing" || receiverOnline
+          ? "Ringing..."
+          : "Calling..."
+        : "Incoming Call...";
 
   return (
-    <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center gap-6 p-4 text-center">
-      {/* Visual Indicator for Status */}
-      <div className="flex flex-col items-center gap-4">
+    <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-between p-6">
+      {/* 1. Status Indicator */}
+      <div className="flex flex-col items-center gap-2 mt-4">
         <div
-          className={`w-20 h-20 rounded-full flex items-center justify-center bg-gray-800 border-2 ${callStatus === "connected" ? "border-green-500" : "border-blue-500 animate-pulse"}`}
+          className={`flex items-center gap-2 px-4 py-1 rounded-full bg-gray-800 border ${callStatus === "connected" ? "border-green-500 text-green-500" : "border-blue-500 text-blue-500 animate-pulse"}`}
         >
-          <SignalHigh className="text-white" size={32} />
-        </div>
-
-        <div className="text-white text-2xl font-bold tracking-wide">
-          {statusText}
+          <SignalHigh size={16} />
+          <span className="text-sm font-medium uppercase tracking-widest">
+            {statusText}
+          </span>
         </div>
       </div>
 
-      {/* Hidden Audio Elements */}
-      <div className="hidden">
-        {remoteStream && <video ref={remoteVideoRef} autoPlay playsInline />}
-        {localStream && (
-          <video ref={localVideoRef} autoPlay muted playsInline />
-        )}
-      </div>
-
-      <div className="flex flex-col items-center justify-center py-10">
-        <div className="w-32 h-32 bg-gray-800 rounded-full flex items-center justify-center border-4 border-gray-700 shadow-2xl">
-          <Phone
-            size={48}
-            className={`text-gray-400 ${callStatus === "connected" ? "text-green-500" : "animate-pulse"}`}
-          />
-        </div>
-        {callStatus === "connected" && (
-          <div className="mt-4 text-green-500 font-mono animate-pulse">
-            Audio Live
+      {/* 2. Main Content Area */}
+      <div className="flex-1 w-full flex items-center justify-center overflow-hidden">
+        {isSharing || remoteIsSharing ? (
+          // Agar koi screen share kar raha hai toh ScreenView dikhao
+          <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-300">
+            <ScreenView
+              stream={isSharing ? localStream : remoteStream}
+              label={isSharing ? "You are sharing screen" : "Partner's Screen"}
+            />
+          </div>
+        ) : (
+          // Normal Audio Call View
+          <div className="flex flex-col items-center">
+            <div className="w-36 h-36 bg-gray-900 rounded-full flex items-center justify-center border-4 border-gray-800 shadow-[0_0_60px_rgba(59,130,246,0.15)]">
+              <Phone
+                size={56}
+                className={`text-gray-400 ${callStatus === "connected" ? "text-green-500" : "animate-pulse"}`}
+              />
+            </div>
+            {callStatus === "connected" && (
+              <div className="mt-4 text-green-500 font-mono text-xs animate-pulse tracking-tighter">
+                • SECURE AUDIO ACTIVE
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Controls */}
-      <div className="flex gap-8 mt-10">
+      {/* 3. Hidden Audio Handlers (Zaroori for WebRTC) */}
+      <div className="hidden">
+        <video ref={remoteVideoRef} autoPlay playsInline />
+        <video ref={localVideoRef} autoPlay muted playsInline />
+      </div>
+
+      {/* 4. Control Bar */}
+      <div className="flex items-center gap-6 mb-10 bg-gray-900/90 px-8 py-5 rounded-full border border-gray-800 shadow-2xl backdrop-blur-sm">
+        {/* Mute Button */}
         <button
           onClick={() => setMuted((prev) => !prev)}
-          className={`p-4 rounded-full transition-all ${muted ? "bg-red-500" : "bg-gray-700 hover:bg-gray-600 cursor-pointer"}`}
+          className={`p-4 rounded-full transition-all active:scale-90 ${muted ? "bg-red-500 hover:bg-red-600" : "bg-gray-800 hover:bg-gray-700"}`}
         >
           {muted ? (
             <MicOff size={24} className="text-white" />
@@ -117,9 +129,24 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
           )}
         </button>
 
+        {/* Screen Share Toggle Button */}
         <button
-          onClick={() => onEnd()}
-          className="bg-red-600 text-white p-4 rounded-full hover:bg-red-700 transition-all shadow-lg hover:scale-110 active:scale-95 cursor-pointer"
+          onClick={onToggleScreen}
+          disabled={callStatus !== "connected"}
+          className={`p-4 rounded-full transition-all active:scale-90 disabled:opacity-20 ${isSharing ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-800 hover:bg-gray-700"}`}
+          title={isSharing ? "Stop Sharing" : "Start Sharing"}
+        >
+          {isSharing ? (
+            <MonitorOff size={24} className="text-white" />
+          ) : (
+            <Monitor size={24} className="text-white" />
+          )}
+        </button>
+
+        {/* End Call Button */}
+        <button
+          onClick={onEnd}
+          className="bg-red-600 text-white p-4 rounded-full hover:bg-red-700 transition-all shadow-lg hover:rotate-180 active:scale-95 duration-300"
         >
           <Phone size={24} className="rotate-180" />
         </button>

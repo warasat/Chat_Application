@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
+import { useScreenShare } from "./useScreenShare"; // 🟢 Import the new hook
 
 const socket: Socket = io(
   import.meta.env.VITE_BACKEND_URL || "http://localhost:5000",
@@ -38,9 +39,19 @@ export const useAudioCall = ({
   const [callDuration, setCallDuration] = useState(0);
   const [receiverOnline, setReceiverOnline] = useState<boolean | null>(null);
 
+  // 🟢 Screen Share States
+  const [remoteIsSharing, setRemoteIsSharing] = useState(false);
+
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoEndRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 🟢 Integrate Screen Share Hook
+  const { isSharing, startScreenShare, stopScreenShare } = useScreenShare(
+    peerRef.current,
+    socket,
+    chatId,
+  );
 
   const startTimer = useCallback(() => {
     if (durationRef.current) return;
@@ -52,14 +63,12 @@ export const useAudioCall = ({
 
   const endCall = useCallback(
     (notifyOther = true) => {
-      if (autoEndRef.current) {
-        clearTimeout(autoEndRef.current);
-        autoEndRef.current = null;
-      }
-      if (durationRef.current) {
-        clearInterval(durationRef.current);
-        durationRef.current = null;
-      }
+      if (autoEndRef.current) clearTimeout(autoEndRef.current);
+      if (durationRef.current) clearInterval(durationRef.current);
+
+      // Stop screen sharing if active
+      if (isSharing) stopScreenShare();
+
       if (peerRef.current) {
         peerRef.current.close();
         peerRef.current = null;
@@ -74,12 +83,13 @@ export const useAudioCall = ({
       setIsInitiator(false);
       setCallDuration(0);
       setReceiverOnline(null);
+      setRemoteIsSharing(false);
 
       if (notifyOther) {
         socket.emit("end-call", { chatId, from: currentUserId });
       }
     },
-    [chatId, currentUserId, localStream],
+    [chatId, currentUserId, localStream, isSharing, stopScreenShare],
   );
 
   const initPeer = async () => {
@@ -97,19 +107,24 @@ export const useAudioCall = ({
       }
     };
 
-    peer.ontrack = (event) => setRemoteStream(event.streams[0]);
+    peer.ontrack = (event) => {
+      console.log("📡 Remote track received:", event.track.kind);
+      // Agar multiple tracks hain (audio + video), toh pehla stream set karein
+      setRemoteStream(event.streams[0]);
+    };
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
     setLocalStream(stream);
     peerRef.current = peer;
+    return peer;
   };
 
   const startCall = async () => {
     setIsInitiator(true);
-    await initPeer();
-    const offer = await peerRef.current!.createOffer();
-    await peerRef.current!.setLocalDescription(offer);
+    const peer = await initPeer();
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
 
     socket.emit("call-user", {
       chatId,
@@ -123,7 +138,6 @@ export const useAudioCall = ({
     setCallStatus("calling");
 
     autoEndRef.current = setTimeout(() => {
-      console.log("⏰ No answer — call ended automatically.");
       endCall(true);
     }, 30000);
   };
@@ -133,17 +147,12 @@ export const useAudioCall = ({
     const { from, offer } = incomingCall;
 
     setIsInitiator(false);
-    await initPeer();
-    await peerRef.current!.setRemoteDescription(
-      new RTCSessionDescription(offer),
-    );
-    const answer = await peerRef.current!.createAnswer();
-    await peerRef.current!.setLocalDescription(answer);
+    const peer = await initPeer();
+    await peer.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
 
-    if (autoEndRef.current) {
-      clearTimeout(autoEndRef.current);
-      autoEndRef.current = null;
-    }
+    if (autoEndRef.current) clearTimeout(autoEndRef.current);
 
     socket.emit("answer-call", { chatId, answer, from });
     setIncomingCall(null);
@@ -165,59 +174,62 @@ export const useAudioCall = ({
   };
 
   useEffect(() => {
-    const handleIncomingCall = (data: IncomingCall) => {
-      if (data.from === currentUserId) return;
-
-      setIncomingCall(data);
-      setCallStatus("ringing");
+    // 🟢 Handle Screen Sharing Signal (Negotiation)
+    const handleRemoteScreenSignal = async ({
+      offer,
+      isSharing: remoteShared,
+    }: any) => {
+      if (offer && peerRef.current) {
+        await peerRef.current.setRemoteDescription(
+          new RTCSessionDescription(offer),
+        );
+        const answer = await peerRef.current.createAnswer();
+        await peerRef.current.setLocalDescription(answer);
+        // Answer wapis bhejein taake caller ka connection update ho
+        socket.emit("screen-sharing-signal", {
+          chatId,
+          offer: answer,
+          isSharing: remoteShared,
+        });
+      }
+      setRemoteIsSharing(remoteShared);
     };
 
-    const handleCallAnswered = async ({
-      answer,
-    }: {
-      answer: RTCSessionDescriptionInit;
-    }) => {
-      if (autoEndRef.current) {
-        clearTimeout(autoEndRef.current);
-        autoEndRef.current = null;
+    socket.on("incoming-call", (data) => {
+      if (data.from !== currentUserId) {
+        setIncomingCall(data);
+        setCallStatus("ringing");
       }
-      if (peerRef.current) {
+    });
+
+    socket.on("call-answered", async ({ answer }) => {
+      if (autoEndRef.current) clearTimeout(autoEndRef.current);
+      if (peerRef.current && answer) {
         await peerRef.current.setRemoteDescription(
           new RTCSessionDescription(answer),
         );
       }
       setCallStatus("connected");
       startTimer();
-    };
+    });
 
-    const handleIceCandidate = async ({
-      candidate,
-    }: {
-      candidate: RTCIceCandidateInit;
-    }) => {
+    socket.on("ice-candidate", async ({ candidate }) => {
       try {
-        if (peerRef.current) {
+        if (peerRef.current && candidate) {
           await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
         }
       } catch (err) {
         console.error("ICE error:", err);
       }
-    };
+    });
 
-    const handleCallStatus = ({ isOnline }: { isOnline: boolean }) => {
-      console.log(
-        "📡 Frontend received status:",
-        isOnline ? "Ringing" : "Calling",
-      );
+    socket.on("call-status", ({ isOnline }) => {
       setReceiverOnline(isOnline);
       setCallStatus(isOnline ? "ringing" : "calling");
-    };
+    });
 
-    socket.on("incoming-call", handleIncomingCall);
-    socket.on("call-answered", handleCallAnswered);
-    socket.on("ice-candidate", handleIceCandidate);
+    socket.on("remote-screen-signal", handleRemoteScreenSignal);
     socket.on("call-ended", () => endCall(false));
-    socket.on("call-status", handleCallStatus);
 
     return () => {
       socket.off("incoming-call");
@@ -225,17 +237,15 @@ export const useAudioCall = ({
       socket.off("ice-candidate");
       socket.off("call-ended");
       socket.off("call-status");
+      socket.off("remote-screen-signal");
     };
   }, [chatId, currentUserId, endCall, startTimer]);
 
   useEffect(() => {
-    const syncSession = () => {
+    const syncSession = () =>
       socket.emit("set_session", { senderId: currentUserId, chatId });
-    };
-
     if (socket.connected) syncSession();
     socket.on("connect", syncSession);
-
     return () => {
       socket.off("connect", syncSession);
     };
@@ -254,5 +264,10 @@ export const useAudioCall = ({
     rejectCall,
     receiverOnline,
     endCall,
+    // 🟢 Export Screen Share Props
+    isSharing,
+    remoteIsSharing,
+    startScreenShare,
+    stopScreenShare,
   };
 };

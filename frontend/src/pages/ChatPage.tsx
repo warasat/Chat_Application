@@ -138,6 +138,10 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     callDuration,
     receiverOnline,
     callStatus,
+    isSharing,
+    remoteIsSharing,
+    startScreenShare,
+    stopScreenShare,
   } = useAudioCall({
     currentUserId,
     receiverId: receiver._id,
@@ -365,6 +369,9 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
             receiverOnline={receiverOnline}
             isCaller={isCaller}
             onEnd={endCall}
+            isSharing={isSharing}
+            remoteIsSharing={remoteIsSharing}
+            onToggleScreen={isSharing ? stopScreenShare : startScreenShare}
           />
         )}
       </div>

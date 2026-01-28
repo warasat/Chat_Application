@@ -3,7 +3,6 @@ import { client as cassandraClient } from "../config/cassandra.js";
 const activeCallTimeouts = new Map();
 
 export const registerCallHandlers = (io, socket) => {
-  // Sabse important: Generic function for all call logs
   const logCallEvent = async (chatId, from, receiverId, type, content) => {
     const message_time = new Date();
     const query = `
@@ -18,7 +17,6 @@ export const registerCallHandlers = (io, socket) => {
         { prepare: true },
       );
 
-      // Pura room (chatId) update hoga, taake dono users ko real-time blob mile
       io.to(chatId).emit("receive_message", {
         chat_id: chatId,
         sender_id: from,
@@ -102,7 +100,6 @@ export const registerCallHandlers = (io, socket) => {
       activeCallTimeouts.delete(chatId);
     }
 
-    // Log call as accepted (from: caller, receiverId: person who answered)
     await logCallEvent(
       chatId,
       from,
@@ -122,7 +119,6 @@ export const registerCallHandlers = (io, socket) => {
       activeCallTimeouts.delete(chatId);
     }
 
-    // Log if the call was explicitly declined
     if (wasRejected) {
       await logCallEvent(
         chatId,
@@ -141,5 +137,10 @@ export const registerCallHandlers = (io, socket) => {
   socket.on("ice-candidate", ({ chatId, candidate, from }) => {
     const callRoom = `call_${chatId}`;
     socket.to(callRoom).emit("ice-candidate", { candidate, from });
+  });
+  // Screen Sharing Signals
+  socket.on("screen-sharing-signal", ({ chatId, offer, isSharing }) => {
+    const callRoom = `call_${chatId}`;
+    socket.to(callRoom).emit("remote-screen-signal", { offer, isSharing });
   });
 };

@@ -10,7 +10,7 @@ export const useChat = (
   const [messages, setMessages] = useState<any[]>([]);
   const [isOnline, setIsOnline] = useState(false);
 
-  // 🟢 Refs use kar rahe hain taake socket listener hamesha latest IDs access kare
+  // Refs use kar rahe hain taake socket listener hamesha latest IDs access kare
   const chatIdRef = useRef(chatId);
   const userIdRef = useRef(currentUserId);
 
@@ -39,7 +39,7 @@ export const useChat = (
 
       console.log("📩 Socket Event Received:", m.type);
 
-      // 🟢 Reference values check kar rahe hain (Strict comparison)
+      // Reference values check kar rahe hain (Strict comparison)
       if (String(incomingChatId) === String(chatIdRef.current)) {
         const callStatusTypes = [
           "missed_call",
