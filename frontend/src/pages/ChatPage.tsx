@@ -23,7 +23,7 @@ interface ChatPageProps {
   chatId: string;
   currentUserId: string;
   receiver: User;
-  phoneNumber: string;
+  phoneNumber?: string;
 }
 
 const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
