@@ -1,7 +1,8 @@
 import type { Message } from "../types/message";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { PhoneOff } from "lucide-react"; // PhoneOff icon install karein ya koi aur use karein
+// 🟢 FIX: PhoneX ko remove kiya aur PhoneMissed use kiya
+import { PhoneOff, PhoneIncoming, PhoneMissed } from "lucide-react";
 
 interface MessageBubbleProps {
   message: Message;
@@ -14,26 +15,64 @@ const MessageBubble = ({
   currentUserId,
   onImageClick,
 }: MessageBubbleProps) => {
-  // Cassandra returns sender_id
   const isMe = (message.sender_id || message.senderId) === currentUserId;
 
-  // 1️⃣ MISSED CALL UI (Center layout)
-  if ((message.type as any) === "missed_call") {
+  // 1️⃣ CALL STATUS MESSAGES
+  const callTypes = ["missed_call", "call_accepted", "call_rejected"];
+
+  // 🟢 FIX: 'as any' use karke type comparison error khatam kiya
+  // (Jab tak aap types/message.ts update nahi karte)
+  const messageType = message.type as any;
+
+  if (callTypes.includes(messageType)) {
+    let config = {
+      label: "",
+      icon: <PhoneOff size={14} />,
+      colorClass: "text-gray-600",
+      bgClass: "bg-gray-100",
+      iconBg: "bg-gray-200",
+    };
+
+    switch (messageType) {
+      case "missed_call":
+        config = {
+          label: isMe ? "Outgoing Call (No Answer)" : "Missed Audio Call",
+          icon: <PhoneMissed size={14} />, // 🟢 FIX: PhoneX ki jagah PhoneMissed
+          colorClass: "text-red-600",
+          bgClass: "bg-red-50 border-red-100",
+          iconBg: "bg-red-100",
+        };
+        break;
+      case "call_accepted":
+        config = {
+          label: isMe ? "Call Answered" : "Incoming Call (Answered)",
+          icon: <PhoneIncoming size={14} />,
+          colorClass: "text-green-600",
+          bgClass: "bg-green-50 border-green-100",
+          iconBg: "bg-green-100",
+        };
+        break;
+      case "call_rejected":
+        config = {
+          label: isMe ? "Call Declined" : "Call Rejected",
+          icon: <PhoneOff size={14} />,
+          colorClass: "text-gray-600",
+          bgClass: "bg-gray-50 border-gray-200",
+          iconBg: "bg-gray-200",
+        };
+        break;
+    }
+
     return (
       <div className="flex justify-center w-full my-4">
         <div className="flex flex-col items-center gap-1">
-          <div className="bg-gray-100 border border-gray-200 text-gray-700 px-4 py-1.5 rounded-full flex items-center gap-2 shadow-sm">
-            <div
-              className={`p-1 rounded-full ${isMe ? "bg-blue-100" : "bg-red-100"}`}
-            >
-              <PhoneOff
-                size={14}
-                className={isMe ? "text-blue-600" : "text-red-600"}
-              />
+          <div
+            className={`${config.bgClass} border ${config.colorClass} px-4 py-1.5 rounded-full flex items-center gap-2 shadow-sm`}
+          >
+            <div className={`p-1 rounded-full ${config.iconBg}`}>
+              {config.icon}
             </div>
-            <span className="text-xs font-semibold">
-              {isMe ? "Outgoing Call (No Answer)" : "Missed Audio Call"}
-            </span>
+            <span className="text-xs font-semibold">{config.label}</span>
           </div>
           <span className="text-[10px] text-gray-400 font-medium italic">
             {new Date(message.message_time || Date.now()).toLocaleTimeString(

@@ -154,7 +154,12 @@ export const useAudioCall = ({
 
   const rejectCall = () => {
     if (incomingCall?.from) {
-      socket.emit("end-call", { chatId, from: currentUserId });
+      socket.emit("end-call", {
+        chatId,
+        from: currentUserId,
+        receiverId: incomingCall.from,
+        wasRejected: true,
+      });
     }
     setIncomingCall(null);
   };

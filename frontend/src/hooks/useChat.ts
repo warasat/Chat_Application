@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import socket from "../services/socket";
 import API from "../services/api";
 
@@ -9,6 +9,15 @@ export const useChat = (
 ) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [isOnline, setIsOnline] = useState(false);
+
+  // 🟢 Refs use kar rahe hain taake socket listener hamesha latest IDs access kare
+  const chatIdRef = useRef(chatId);
+  const userIdRef = useRef(currentUserId);
+
+  useEffect(() => {
+    chatIdRef.current = chatId;
+    userIdRef.current = currentUserId;
+  }, [chatId, currentUserId]);
 
   useEffect(() => {
     if (!chatId || !currentUserId) return;
@@ -28,23 +37,41 @@ export const useChat = (
       const incomingChatId = m.chat_id || m.chatId;
       const incomingSenderId = m.sender_id || m.senderId;
 
-      // 1. Check karein ke message isi chat ka hai
-      if (incomingChatId === chatId) {
-        // 2. Logic: Message add karo agar:
-        // - Message kisi aur ne bheja hai (Normal chat)
-        // - YA message ka type 'missed_call' hai (Taki caller ko bhi blob dikhe)
-        if (incomingSenderId !== currentUserId || m.type === "missed_call") {
+      console.log("📩 Socket Event Received:", m.type);
+
+      // 🟢 Reference values check kar rahe hain (Strict comparison)
+      if (String(incomingChatId) === String(chatIdRef.current)) {
+        const callStatusTypes = [
+          "missed_call",
+          "call_accepted",
+          "call_rejected",
+        ];
+
+        // Agar dusre ne bheja ho YA phir koi call status event ho
+        if (
+          incomingSenderId !== userIdRef.current ||
+          callStatusTypes.includes(m.type)
+        ) {
           setMessages((prev) => {
-            // Double safety: Check if message already exists (to avoid duplicates)
+            // Duplicate check
             const isDuplicate = prev.some(
               (msg) =>
                 msg.message_time === m.message_time && msg.type === m.type,
             );
 
             if (isDuplicate) return prev;
+
+            console.log("✅ Message added to state:", m.type);
             return [...prev, m];
           });
         }
+      } else {
+        console.warn(
+          "🚫 Chat ID mismatch. Expected:",
+          chatIdRef.current,
+          "Got:",
+          incomingChatId,
+        );
       }
     };
 
@@ -64,7 +91,7 @@ export const useChat = (
       socket.off("receive_message", handleReceiveMessage);
       socket.off("user_status", handleStatus);
     };
-  }, [chatId, currentUserId, receiverId]);
+  }, [chatId, currentUserId, receiverId]); // Dependencies correct hain
 
   // Function to send a message
   const sendMessage = (content: string, type: string = "text") => {
@@ -79,10 +106,7 @@ export const useChat = (
       message_time: new Date().toISOString(),
     };
 
-    // Add to UI immediately for a snappy feel
     setMessages((prev) => [...prev, newMsg]);
-
-    // Emit to backend
     socket.emit("message", newMsg);
   };
 

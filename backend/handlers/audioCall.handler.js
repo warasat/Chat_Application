@@ -1,11 +1,10 @@
 import { client as cassandraClient } from "../config/cassandra.js";
 
-// Call timeouts ko track karne ke liye Map
 const activeCallTimeouts = new Map();
 
 export const registerCallHandlers = (io, socket) => {
-  // --- Helper Function to Log Missed Call in Cassandra ---
-  const logMissedCall = async (chatId, from, receiverId) => {
+  // Sabse important: Generic function for all call logs
+  const logCallEvent = async (chatId, from, receiverId, type, content) => {
     const message_time = new Date();
     const query = `
       INSERT INTO messages (chat_id, message_time, content, sender_id, receiver_id, type) 
@@ -15,33 +14,27 @@ export const registerCallHandlers = (io, socket) => {
     try {
       await cassandraClient.execute(
         query,
-        [
-          chatId,
-          message_time,
-          "Missed Audio Call",
-          from,
-          receiverId,
-          "missed_call",
-        ],
+        [chatId, message_time, content, from, receiverId, type],
         { prepare: true },
       );
 
-      // Live update for the chat UI
+      // Pura room (chatId) update hoga, taake dono users ko real-time blob mile
       io.to(chatId).emit("receive_message", {
         chat_id: chatId,
         sender_id: from,
         receiver_id: receiverId,
-        content: "Missed Audio Call",
-        type: "missed_call",
+        content: content,
+        type: type,
         message_time: message_time.toISOString(),
       });
-      console.log(`📝 Missed call logged for chat: ${chatId}`);
+
+      console.log(`📝 Call event [${type}] logged for chat: ${chatId}`);
     } catch (err) {
-      console.error("❌ Cassandra Missed Call Error:", err);
+      console.error(`❌ Cassandra Error (${type}):`, err);
     }
   };
 
-  // 1️⃣ Caller starts call
+  // Caller starts call
   socket.on(
     "call-user",
     async ({ chatId, from, receiverId, offer, phoneNumber }) => {
@@ -53,17 +46,23 @@ export const registerCallHandlers = (io, socket) => {
 
       const isOnline = !!receiverSocket;
 
-      // A. User is Offline
       if (!isOnline) {
         console.log(
           `📡 Receiver ${receiverId} is offline. Logging missed call.`,
         );
-        await logMissedCall(chatId, from, receiverId);
+        // Generic function use karein
+        await logCallEvent(
+          chatId,
+          from,
+          receiverId,
+          "missed_call",
+          "Missed Audio Call",
+        );
         io.to(from).emit("call-status", { isOnline: false });
         return;
       }
 
-      // B. User is Online - Proceed with ringing
+      // Proceed with ringing
       socket.to(callRoom).emit("incoming-call", {
         from,
         offer,
@@ -72,10 +71,19 @@ export const registerCallHandlers = (io, socket) => {
       });
       io.to(from).emit("call-status", { isOnline: true });
 
-      // Start 30s timer for "No Answer"
+      // Timeout logic
+      if (activeCallTimeouts.has(chatId))
+        clearTimeout(activeCallTimeouts.get(chatId));
+
       const timeout = setTimeout(async () => {
-        console.log(`⏰ Call timeout for ${chatId}. Saving missed call.`);
-        await logMissedCall(chatId, from, receiverId);
+        console.log(`⏰ Call timeout for ${chatId}.`);
+        await logCallEvent(
+          chatId,
+          from,
+          receiverId,
+          "missed_call",
+          "Missed Audio Call",
+        );
         io.to(callRoom).emit("call-ended", {
           from: "system",
           reason: "no-answer",
@@ -87,31 +95,49 @@ export const registerCallHandlers = (io, socket) => {
     },
   );
 
-  // 2️⃣ Callee answers call
-  socket.on("answer-call", ({ chatId, answer, from }) => {
-    // Clear timeout as call is answered
+  // Callee answers call
+  socket.on("answer-call", async ({ chatId, answer, from, receiverId }) => {
     if (activeCallTimeouts.has(chatId)) {
       clearTimeout(activeCallTimeouts.get(chatId));
       activeCallTimeouts.delete(chatId);
     }
 
+    // Log call as accepted (from: caller, receiverId: person who answered)
+    await logCallEvent(
+      chatId,
+      from,
+      receiverId,
+      "call_accepted",
+      "Call Answered",
+    );
+
     const callRoom = `call_${chatId}`;
     io.to(callRoom).emit("call-answered", { answer, from });
   });
 
-  // 3️⃣ End call
-  socket.on("end-call", ({ chatId, from }) => {
-    // Clear timeout if call ended during ringing
+  //  End call
+  socket.on("end-call", async ({ chatId, from, receiverId, wasRejected }) => {
     if (activeCallTimeouts.has(chatId)) {
       clearTimeout(activeCallTimeouts.get(chatId));
       activeCallTimeouts.delete(chatId);
+    }
+
+    // Log if the call was explicitly declined
+    if (wasRejected) {
+      await logCallEvent(
+        chatId,
+        from,
+        receiverId,
+        "call_rejected",
+        "Call Declined",
+      );
     }
 
     const callRoom = `call_${chatId}`;
     io.to(callRoom).emit("call-ended", { from });
   });
 
-  // 4️⃣ ICE Candidates
+  // ICE Candidates
   socket.on("ice-candidate", ({ chatId, candidate, from }) => {
     const callRoom = `call_${chatId}`;
     socket.to(callRoom).emit("ice-candidate", { candidate, from });
