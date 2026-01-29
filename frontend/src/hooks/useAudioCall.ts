@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
-import { useScreenShare } from "./useScreenShare"; // 🟢 Import the new hook
+import { useScreenShare } from "./useScreenShare";
 
 const socket: Socket = io(import.meta.env.VITE_SOCKET_URL, {
   transports: ["websocket"],
@@ -38,14 +38,12 @@ export const useAudioCall = ({
   const [callDuration, setCallDuration] = useState(0);
   const [receiverOnline, setReceiverOnline] = useState<boolean | null>(null);
 
-  // 🟢 Screen Share States
   const [remoteIsSharing, setRemoteIsSharing] = useState(false);
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
   const durationRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoEndRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 🟢 Integrate Screen Share Hook
   const { isSharing, startScreenShare, stopScreenShare } = useScreenShare(
     peerRef.current,
     socket,
@@ -65,7 +63,6 @@ export const useAudioCall = ({
       if (autoEndRef.current) clearTimeout(autoEndRef.current);
       if (durationRef.current) clearInterval(durationRef.current);
 
-      // Stop screen sharing if active
       if (isSharing) stopScreenShare();
 
       if (peerRef.current) {
@@ -108,7 +105,7 @@ export const useAudioCall = ({
 
     peer.ontrack = (event) => {
       console.log("📡 Remote track received:", event.track.kind);
-      // Agar multiple tracks hain (audio + video), toh pehla stream set karein
+
       setRemoteStream(event.streams[0]);
     };
 
@@ -173,7 +170,6 @@ export const useAudioCall = ({
   };
 
   useEffect(() => {
-    // 🟢 Handle Screen Sharing Signal (Negotiation)
     const handleRemoteScreenSignal = async ({
       offer,
       isSharing: remoteShared,
@@ -184,7 +180,7 @@ export const useAudioCall = ({
         );
         const answer = await peerRef.current.createAnswer();
         await peerRef.current.setLocalDescription(answer);
-        // Answer wapis bhejein taake caller ka connection update ho
+
         socket.emit("screen-sharing-signal", {
           chatId,
           offer: answer,
@@ -263,7 +259,7 @@ export const useAudioCall = ({
     rejectCall,
     receiverOnline,
     endCall,
-    // 🟢 Export Screen Share Props
+
     isSharing,
     remoteIsSharing,
     startScreenShare,
