@@ -120,7 +120,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         {/* Mute Button */}
         <button
           onClick={() => setMuted((prev) => !prev)}
-          className={`p-4 rounded-full transition-all active:scale-90 ${muted ? "bg-red-500 hover:bg-red-600" : "bg-gray-800 hover:bg-gray-700"}`}
+          className={`p-4 rounded-full transition-all active:scale-90 ${muted ? "bg-red-500 hover:bg-red-600" : "bg-gray-800 hover:bg-gray-700 cursor-pointer"}`}
         >
           {muted ? (
             <MicOff size={24} className="text-white" />
@@ -133,7 +133,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         <button
           onClick={onToggleScreen}
           disabled={callStatus !== "connected"}
-          className={`p-4 rounded-full transition-all active:scale-90 disabled:opacity-20 ${isSharing ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-800 hover:bg-gray-700"}`}
+          className={`p-4 cursor-pointer rounded-full transition-all active:scale-90 disabled:opacity-20 ${isSharing ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-800 hover:bg-gray-700"}`}
           title={isSharing ? "Stop Sharing" : "Start Sharing"}
         >
           {isSharing ? (
@@ -146,7 +146,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         {/* End Call Button */}
         <button
           onClick={onEnd}
-          className="bg-red-600 text-white p-4 rounded-full hover:bg-red-700 transition-all shadow-lg hover:rotate-180 active:scale-95 duration-300"
+          className="bg-red-600 text-white p-4 rounded-full hover:bg-red-700 transition-all shadow-lg hover:rotate-180 active:scale-95 duration-300 cursor-pointer"
         >
           <Phone size={24} className="rotate-180" />
         </button>
