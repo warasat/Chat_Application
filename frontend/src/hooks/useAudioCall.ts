@@ -2,8 +2,12 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import { useScreenShare } from "./useScreenShare";
 
+// Socket initialization with ngrok bypass headers
 const socket: Socket = io(import.meta.env.VITE_SOCKET_URL, {
   transports: ["websocket"],
+  extraHeaders: {
+    "ngrok-skip-browser-warning": "true",
+  },
 });
 
 interface UseAudioCallProps {
@@ -37,7 +41,6 @@ export const useAudioCall = ({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [callDuration, setCallDuration] = useState(0);
   const [receiverOnline, setReceiverOnline] = useState<boolean | null>(null);
-
   const [remoteIsSharing, setRemoteIsSharing] = useState(false);
 
   const peerRef = useRef<RTCPeerConnection | null>(null);
@@ -98,6 +101,29 @@ export const useAudioCall = ({
             "stun:stun2.l.google.com:19302",
           ],
         },
+        {
+          urls: "stun:stun.relay.metered.ca:80",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:80",
+          username: "0d9a94c2bef9648000189eaf",
+          credential: "80gBScBi20Ec8PrR",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:80?transport=tcp",
+          username: "0d9a94c2bef9648000189eaf",
+          credential: "80gBScBi20Ec8PrR",
+        },
+        {
+          urls: "turn:global.relay.metered.ca:443",
+          username: "0d9a94c2bef9648000189eaf",
+          credential: "80gBScBi20Ec8PrR",
+        },
+        {
+          urls: "turns:global.relay.metered.ca:443?transport=tcp",
+          username: "0d9a94c2bef9648000189eaf",
+          credential: "80gBScBi20Ec8PrR",
+        },
       ],
     });
 
@@ -113,8 +139,9 @@ export const useAudioCall = ({
 
     peer.ontrack = (event) => {
       console.log("📡 Remote track received:", event.track.kind);
-
-      setRemoteStream(event.streams[0]);
+      if (event.streams && event.streams[0]) {
+        setRemoteStream(event.streams[0]);
+      }
     };
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -223,10 +250,6 @@ export const useAudioCall = ({
             await peerRef.current.addIceCandidate(
               new RTCIceCandidate(candidate),
             );
-          } else {
-            console.warn(
-              "Remote description not yet set. Candidate ignored or queued.",
-            );
           }
         }
       } catch (err) {
@@ -275,7 +298,6 @@ export const useAudioCall = ({
     rejectCall,
     receiverOnline,
     endCall,
-
     isSharing,
     remoteIsSharing,
     startScreenShare,
