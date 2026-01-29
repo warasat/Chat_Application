@@ -3,7 +3,7 @@ import { io, Socket } from "socket.io-client";
 import { useScreenShare } from "./useScreenShare"; // 🟢 Import the new hook
 
 const socket: Socket = io(
-  import.meta.env.VITE_BACKEND_URL || "http://localhost:5000",
+  import.meta.env.VITE_API_URL || "http://localhost:5000",
   { transports: ["websocket"] },
 );
 
