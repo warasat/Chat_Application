@@ -26,7 +26,7 @@ router.get("/my-contacts/:userId", protect, async (req, res) => {
   try {
     const user = await User.findById(req.params.userId).populate(
       "contacts",
-      "username phoneNumber profilePic bio"
+      "username phoneNumber profilePic bio",
     );
     if (!user)
       return res.status(404).json({ message: "User not found in database" });
@@ -71,7 +71,7 @@ router.post(
           (error, result) => {
             if (error) return reject(error);
             resolve(result);
-          }
+          },
         );
         bufferStream.pipe(cloudStream);
       });
@@ -80,7 +80,7 @@ router.post(
       const updatedUser = await User.findByIdAndUpdate(
         req.user._id,
         { profilePic: uploadResult.secure_url },
-        { new: true }
+        { new: true },
       );
 
       res.status(200).json({ url: updatedUser.profilePic });
@@ -88,7 +88,7 @@ router.post(
       console.error("Upload-profile error:", err);
       res.status(500).json({ message: err.message });
     }
-  }
+  },
 );
 
 export default router;

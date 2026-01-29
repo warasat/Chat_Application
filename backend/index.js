@@ -19,10 +19,19 @@ connectDB();
 connectCassandra();
 
 const app = express();
+app.set("trust proxy", true);
 const server = http.createServer(app);
 initSocket(server);
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173", // frontend dev
+      "https://kareem-uncongruous-observantly.ngrok-free.dev", // ngrok
+    ],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 app.use("/api/auth", authRoutes);
@@ -49,7 +58,7 @@ const startServer = async () => {
   } catch (error) {
     console.error(
       " Failed to start server due to MCP connection error:",
-      error
+      error,
     );
   }
 };
