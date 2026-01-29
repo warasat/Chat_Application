@@ -219,7 +219,15 @@ export const useAudioCall = ({
     socket.on("ice-candidate", async ({ candidate }) => {
       try {
         if (peerRef.current && candidate) {
-          await peerRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+          if (peerRef.current.remoteDescription) {
+            await peerRef.current.addIceCandidate(
+              new RTCIceCandidate(candidate),
+            );
+          } else {
+            console.warn(
+              "Remote description not yet set. Candidate ignored or queued.",
+            );
+          }
         }
       } catch (err) {
         console.error("ICE error:", err);
