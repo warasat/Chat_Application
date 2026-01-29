@@ -28,6 +28,7 @@ app.use(
     origin: [
       "http://localhost:5173", // frontend dev
       "https://kareem-uncongruous-observantly.ngrok-free.dev", // ngrok
+      "https://chat-application-one-topaz.vercel.app/", // vercel
     ],
     credentials: true,
   }),
