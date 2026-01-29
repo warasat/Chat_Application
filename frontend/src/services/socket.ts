@@ -5,6 +5,10 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
 const socket = io(SOCKET_URL, {
   autoConnect: true,
   reconnection: true,
+  extraHeaders: {
+    "ngrok-skip-browser-warning": "true",
+  },
+  transports: ["websocket", "polling"],
 });
 
 export default socket;

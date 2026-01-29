@@ -26,11 +26,16 @@ initSocket(server);
 app.use(
   cors({
     origin: [
-      "http://localhost:5173", // frontend dev
-      "https://kareem-uncongruous-observantly.ngrok-free.dev", // ngrok
-      "https://chat-application-one-topaz.vercel.app/", // vercel
+      "http://localhost:5173",
+      "https://chat-application-one-topaz.vercel.app", // Aapka Vercel URL
     ],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "ngrok-skip-browser-warning",
+    ],
   }),
 );
 app.use(express.json());
