@@ -13,7 +13,7 @@ import { useSendMessage } from "../hooks/useSendMessage";
 import { useImageModal } from "../hooks/useImageModal";
 import { useCameraHandler } from "../hooks/useCameraHandler";
 import { useVoiceChat } from "../hooks/useVoiceChat";
-import { useAudioCall } from "../hooks/useAudioCall";
+import { useAudioCall } from "../hooks/audioCallHook/useAudioCall";
 import CallModal from "../components/CallModal";
 import InCallScreen from "../components/InCallScreen";
 import { IoCallOutline } from "react-icons/io5";
