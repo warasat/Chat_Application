@@ -4,11 +4,7 @@ import { useWebRTC } from "./useWebRTC";
 import { useCallTimer } from "./useCallTimer";
 import { useCallSocket } from "./useCallSocket";
 import { useScreenShare } from "../useScreenShare";
-
-const socket = io(import.meta.env.VITE_SOCKET_URL, {
-  transports: ["websocket"],
-  extraHeaders: { "ngrok-skip-browser-warning": "true" },
-});
+import socket from "../../services/socket";
 
 export const useAudioCall = ({
   currentUserId,
@@ -192,6 +188,21 @@ export const useAudioCall = ({
       answer,
       from: incomingCall.from,
       receiverId: currentUserId,
+    });
+
+    // ✅ NEW: Attach remote stream and play audio
+    Object.values(remoteStreams).forEach((stream) => {
+      const audioEl = document.createElement("audio");
+      audioEl.srcObject = stream;
+      audioEl.autoplay = true;
+      audioEl.volume = 1;
+      document.body.appendChild(audioEl);
+
+      // Force play after user gesture
+      audioEl
+        .play()
+        .then(() => console.log("Audio playing"))
+        .catch((err) => console.warn("Playback blocked:", err.name));
     });
 
     setIncomingCall(null);

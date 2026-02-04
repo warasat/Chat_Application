@@ -26,40 +26,55 @@ interface InCallScreenProps {
   availableContacts: any[];
 }
 
+// ✅ Fixed RemoteAudio: off-screen, autoplay safe
 const RemoteAudio = React.memo(({ stream }: { stream: MediaStream }) => {
-  const mediaRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const streamIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
-    const el = mediaRef.current;
+    const el = audioRef.current;
     if (!el || !stream) return;
 
-    // Avoid redundant attachment
-    if (streamIdRef.current === stream.id) return;
-
-    console.log("🔗 Attaching new stream to element:", stream.id);
+    if (streamIdRef.current === stream.id) return; // already attached
     streamIdRef.current = stream.id;
-    el.srcObject = stream;
-    el.volume = 1.0; // optional: ensure audible playback
 
-    const playMedia = async () => {
+    el.srcObject = stream;
+    el.volume = 1.0;
+    setTimeout(() => {
+      el.play().catch((err) => console.warn("Playback blocked:", err.name));
+    }, 0);
+
+    const playAudio = async () => {
       try {
         await el.play();
         console.log("🔊 Audio is now flowing for stream:", stream.id);
       } catch (err: any) {
-        if (err.name !== "AbortError") {
-          console.error("Playback failed:", err);
-        }
+        console.warn(
+          "Audio autoplay blocked, will play on user interaction:",
+          err.name,
+        );
       }
     };
 
-    playMedia();
+    playAudio();
   }, [stream]);
 
-  return <audio ref={mediaRef} autoPlay playsInline />;
+  return (
+    <audio
+      ref={audioRef}
+      autoPlay
+      playsInline
+      style={{
+        position: "absolute",
+        width: "1px",
+        height: "1px",
+        opacity: 0,
+        pointerEvents: "none",
+        overflow: "hidden",
+      }}
+    />
+  );
 });
-
-// const MemoizedRemoteAudio = React.memo(RemoteAudio);
 
 const InCallScreen: React.FC<InCallScreenProps> = ({
   localStream,
@@ -78,16 +93,12 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   const toggleMute = () => {
-    const newMutedState = !muted; // Calculate target state first
-    setMuted(newMutedState);
-
+    const newMuted = !muted;
+    setMuted(newMuted);
     if (localStream) {
       localStream.getAudioTracks().forEach((track) => {
-        // If newMutedState is true, track.enabled should be false
-        track.enabled = !newMutedState;
-        console.log(
-          `🎤 Mic Track Label: ${track.label} | Enabled: ${track.enabled}`,
-        );
+        track.enabled = !newMuted;
+        console.log(`🎤 Mic Track: ${track.label} | Enabled: ${track.enabled}`);
       });
     }
   };
@@ -102,7 +113,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
 
   return (
     <div className="fixed inset-0 bg-[#0B0E11] z-50 flex flex-col items-center justify-between p-6">
-      {/* 1. Top Bar: Status and Add Participant */}
+      {/* Top Bar */}
       <div className="w-full flex justify-between items-center max-w-5xl z-20">
         <div className="flex flex-col">
           <div className="flex items-center gap-2 text-blue-400 mb-1">
@@ -118,7 +129,6 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
           </h2>
         </div>
 
-        {/* ➕ Add Participant: Only shows when connected */}
         {callStatus === "connected" && (
           <button
             onClick={() => setShowInviteModal(true)}
@@ -129,15 +139,13 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         )}
       </div>
 
-      {/* 2. Center Content: The Green Avatar */}
+      {/* Center Content */}
       <div className="flex-1 w-full flex flex-col items-center justify-center relative z-10">
         {!remoteIsSharing ? (
           <div className="relative">
-            {/* Pulse animation for calling */}
             {callStatus !== "connected" && (
               <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping scale-125 blur-xl" />
             )}
-
             <div
               className={`w-44 h-44 rounded-full flex items-center justify-center border-4 shadow-2xl transition-all duration-500 ${
                 callStatus === "connected"
@@ -147,10 +155,12 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
             >
               <Phone
                 size={70}
-                className={`${callStatus === "connected" ? "text-green-500" : "text-gray-600 animate-pulse"}`}
+                className={`${
+                  callStatus === "connected"
+                    ? "text-green-500"
+                    : "text-gray-600 animate-pulse"
+                }`}
               />
-
-              {/* 🚀 THE FIX: Yahan receiverOnline ko use kar liya */}
               {receiverOnline && (
                 <div
                   className="absolute top-4 right-4 w-5 h-5 bg-green-500 rounded-full border-4 border-[#0B0E11] z-20 shadow-lg"
@@ -158,8 +168,6 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
                 />
               )}
             </div>
-
-            {/* Status Indicator */}
             <div
               className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
                 callStatus === "connected"
@@ -175,7 +183,6 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
             </div>
           </div>
         ) : (
-          /* Show Screen if someone is sharing */
           <div className="w-full h-full max-w-4xl p-4">
             {Object.values(remoteStreams)[0] && (
               <ScreenView
@@ -186,12 +193,21 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
           </div>
         )}
 
-        <div className="hidden">
+        {/* ✅ Off-screen Remote Audio */}
+        <div
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            opacity: 0,
+            pointerEvents: "none",
+            overflow: "hidden",
+          }}
+        >
           {Object.entries(remoteStreams).map(([userId, stream]) => (
             <RemoteAudio key={userId} stream={stream} />
           ))}
 
-          {/* Handle Local Stream purely as a reference */}
           <video
             ref={(el) => {
               if (el && localStream && el.srcObject !== localStream) {
@@ -201,16 +217,19 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
             autoPlay
             muted
             playsInline
-            className="hidden"
           />
         </div>
       </div>
 
-      {/* 3. Bottom Controls Bar */}
+      {/* Bottom Controls */}
       <div className="flex items-center gap-6 mb-10 bg-[#16191D]/90 px-8 py-5 rounded-2rem border border-white/5 shadow-2xl backdrop-blur-xl z-40">
         <button
           onClick={toggleMute}
-          className={`p-5 rounded-2xl transition-all ${muted ? "bg-red-500 text-white" : "bg-white/5 text-gray-400 hover:text-white cursor-pointer"}`}
+          className={`p-5 rounded-2xl transition-all ${
+            muted
+              ? "bg-red-500 text-white"
+              : "bg-white/5 text-gray-400 hover:text-white cursor-pointer"
+          }`}
         >
           {muted ? <MicOff size={26} /> : <Mic size={26} />}
         </button>
@@ -218,7 +237,11 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         <button
           onClick={onToggleScreen}
           disabled={callStatus !== "connected"}
-          className={`p-5 rounded-2xl transition-all ${isSharing ? "bg-blue-600 text-white" : "bg-white/5 text-gray-400 hover:text-white cursor-pointer"} disabled:opacity-10`}
+          className={`p-5 rounded-2xl transition-all ${
+            isSharing
+              ? "bg-blue-600 text-white"
+              : "bg-white/5 text-gray-400 hover:text-white cursor-pointer"
+          } disabled:opacity-10`}
         >
           {isSharing ? <MonitorOff size={26} /> : <Monitor size={26} />}
         </button>
@@ -231,7 +254,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         </button>
       </div>
 
-      {/* 4. Sidebar Invite Modal */}
+      {/* Invite Modal */}
       {showInviteModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm `z-[70]` flex justify-end">
           <div className="bg-[#0B0E11] w-full max-w-sm h-full border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
