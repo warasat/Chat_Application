@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Mic,
   MicOff,
@@ -6,49 +6,91 @@ import {
   SignalHigh,
   Monitor,
   MonitorOff,
+  UserPlus,
+  X,
 } from "lucide-react";
 import ScreenView from "./ScreenView";
 
 interface InCallScreenProps {
   localStream: MediaStream | null;
-  remoteStream: MediaStream | null;
+  remoteStreams: Record<string, MediaStream>;
   callDuration: number;
   onEnd: () => void;
-  isCaller?: boolean;
   receiverOnline?: boolean | null;
-  incomingCall?: boolean;
   callStatus: "ringing" | "calling" | "connected";
-
+  isCaller?: boolean;
   isSharing: boolean;
   remoteIsSharing: boolean;
   onToggleScreen: () => void;
+  onInvite: (userId: string) => void;
+  availableContacts: any[];
 }
+
+const RemoteAudio = React.memo(({ stream }: { stream: MediaStream }) => {
+  const mediaRef = React.useRef<HTMLAudioElement | null>(null);
+  const streamIdRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    const el = mediaRef.current;
+    if (!el || !stream) return;
+
+    // Avoid redundant attachment
+    if (streamIdRef.current === stream.id) return;
+
+    console.log("🔗 Attaching new stream to element:", stream.id);
+    streamIdRef.current = stream.id;
+    el.srcObject = stream;
+    el.volume = 1.0; // optional: ensure audible playback
+
+    const playMedia = async () => {
+      try {
+        await el.play();
+        console.log("🔊 Audio is now flowing for stream:", stream.id);
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.error("Playback failed:", err);
+        }
+      }
+    };
+
+    playMedia();
+  }, [stream]);
+
+  return <audio ref={mediaRef} autoPlay playsInline />;
+});
+
+// const MemoizedRemoteAudio = React.memo(RemoteAudio);
 
 const InCallScreen: React.FC<InCallScreenProps> = ({
   localStream,
-  remoteStream,
+  remoteStreams,
   callDuration,
   onEnd,
-  isCaller = false,
-  receiverOnline = null,
   callStatus,
   isSharing,
   remoteIsSharing,
   onToggleScreen,
+  onInvite,
+  availableContacts,
+  receiverOnline,
 }) => {
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
-  const [muted, setMuted] = React.useState(false);
+  const [muted, setMuted] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
-  useEffect(() => {
-    // Audio elements for WebRTC
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
+  const toggleMute = () => {
+    const newMutedState = !muted; // Calculate target state first
+    setMuted(newMutedState);
+
+    if (localStream) {
+      localStream.getAudioTracks().forEach((track) => {
+        // If newMutedState is true, track.enabled should be false
+        track.enabled = !newMutedState;
+        console.log(
+          `🎤 Mic Track Label: ${track.label} | Enabled: ${track.enabled}`,
+        );
+      });
     }
-    if (remoteVideoRef.current && remoteStream) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [localStream, remoteStream]);
+  };
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
@@ -58,99 +100,177 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
     return `${m}:${s}`;
   };
 
-  const statusText =
-    callStatus === "connected"
-      ? `Connected (${formatTime(callDuration)})`
-      : isCaller
-        ? callStatus === "ringing" || receiverOnline
-          ? "Ringing..."
-          : "Calling..."
-        : "Incoming Call...";
-
   return (
-    <div className="fixed inset-0 bg-black/95 z-50 flex flex-col items-center justify-between p-6">
-      {/* 1. Status Indicator */}
-      <div className="flex flex-col items-center gap-2 mt-4">
-        <div
-          className={`flex items-center gap-2 px-4 py-1 rounded-full bg-gray-800 border ${callStatus === "connected" ? "border-green-500 text-green-500" : "border-blue-500 text-blue-500 animate-pulse"}`}
-        >
-          <SignalHigh size={16} />
-          <span className="text-sm font-medium uppercase tracking-widest">
-            {statusText}
-          </span>
+    <div className="fixed inset-0 bg-[#0B0E11] z-50 flex flex-col items-center justify-between p-6">
+      {/* 1. Top Bar: Status and Add Participant */}
+      <div className="w-full flex justify-between items-center max-w-5xl z-20">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 text-blue-400 mb-1">
+            <SignalHigh size={16} />
+            <span className="text-[10px] font-bold uppercase tracking-[0.3em]">
+              Encrypted Call
+            </span>
+          </div>
+          <h2 className="text-white text-2xl font-mono font-bold">
+            {callStatus === "connected"
+              ? formatTime(callDuration)
+              : "CALLING..."}
+          </h2>
         </div>
-      </div>
 
-      {/* 2. Main Content Area */}
-      <div className="flex-1 w-full flex items-center justify-center overflow-hidden">
-        {isSharing || remoteIsSharing ? (
-          // Agar koi screen share kar raha hai toh ScreenView dikhao
-          <div className="w-full h-full flex items-center justify-center animate-in fade-in zoom-in duration-300">
-            <ScreenView
-              stream={isSharing ? localStream : remoteStream}
-              label={isSharing ? "You are sharing screen" : "Partner's Screen"}
-            />
-          </div>
-        ) : (
-          // Normal Audio Call View
-          <div className="flex flex-col items-center">
-            <div className="w-36 h-36 bg-gray-900 rounded-full flex items-center justify-center border-4 border-gray-800 shadow-[0_0_60px_rgba(59,130,246,0.15)]">
-              <Phone
-                size={56}
-                className={`text-gray-400 ${callStatus === "connected" ? "text-green-500" : "animate-pulse"}`}
-              />
-            </div>
-            {callStatus === "connected" && (
-              <div className="mt-4 text-green-500 font-mono text-xs animate-pulse tracking-tighter">
-                • SECURE AUDIO ACTIVE
-              </div>
-            )}
-          </div>
+        {/* ➕ Add Participant: Only shows when connected */}
+        {callStatus === "connected" && (
+          <button
+            onClick={() => setShowInviteModal(true)}
+            className="p-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl border border-white/10 transition-all active:scale-90"
+          >
+            <UserPlus size={24} />
+          </button>
         )}
       </div>
 
-      {/* 3. Hidden Audio Handlers (Zaroori for WebRTC) */}
-      <div className="hidden">
-        <video ref={remoteVideoRef} autoPlay playsInline />
-        <video ref={localVideoRef} autoPlay muted playsInline />
+      {/* 2. Center Content: The Green Avatar */}
+      <div className="flex-1 w-full flex flex-col items-center justify-center relative z-10">
+        {!remoteIsSharing ? (
+          <div className="relative">
+            {/* Pulse animation for calling */}
+            {callStatus !== "connected" && (
+              <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping scale-125 blur-xl" />
+            )}
+
+            <div
+              className={`w-44 h-44 rounded-full flex items-center justify-center border-4 shadow-2xl transition-all duration-500 ${
+                callStatus === "connected"
+                  ? "bg-green-600/10 border-green-500 shadow-green-500/20"
+                  : "bg-gray-900 border-gray-800"
+              }`}
+            >
+              <Phone
+                size={70}
+                className={`${callStatus === "connected" ? "text-green-500" : "text-gray-600 animate-pulse"}`}
+              />
+
+              {/* 🚀 THE FIX: Yahan receiverOnline ko use kar liya */}
+              {receiverOnline && (
+                <div
+                  className="absolute top-4 right-4 w-5 h-5 bg-green-500 rounded-full border-4 border-[#0B0E11] z-20 shadow-lg"
+                  title="User is Online"
+                />
+              )}
+            </div>
+
+            {/* Status Indicator */}
+            <div
+              className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                callStatus === "connected"
+                  ? "bg-green-600 text-white"
+                  : "bg-blue-600 text-white"
+              }`}
+            >
+              {callStatus === "connected"
+                ? "Active"
+                : receiverOnline
+                  ? "Ringing..."
+                  : "Calling..."}
+            </div>
+          </div>
+        ) : (
+          /* Show Screen if someone is sharing */
+          <div className="w-full h-full max-w-4xl p-4">
+            {Object.values(remoteStreams)[0] && (
+              <ScreenView
+                stream={Object.values(remoteStreams)[0]}
+                label="Participant's Screen"
+              />
+            )}
+          </div>
+        )}
+
+        <div className="hidden">
+          {Object.entries(remoteStreams).map(([userId, stream]) => (
+            <RemoteAudio key={userId} stream={stream} />
+          ))}
+
+          {/* Handle Local Stream purely as a reference */}
+          <video
+            ref={(el) => {
+              if (el && localStream && el.srcObject !== localStream) {
+                el.srcObject = localStream;
+              }
+            }}
+            autoPlay
+            muted
+            playsInline
+            className="hidden"
+          />
+        </div>
       </div>
 
-      {/* 4. Control Bar */}
-      <div className="flex items-center gap-6 mb-10 bg-gray-900/90 px-8 py-5 rounded-full border border-gray-800 shadow-2xl backdrop-blur-sm">
-        {/* Mute Button */}
+      {/* 3. Bottom Controls Bar */}
+      <div className="flex items-center gap-6 mb-10 bg-[#16191D]/90 px-8 py-5 rounded-2rem border border-white/5 shadow-2xl backdrop-blur-xl z-40">
         <button
-          onClick={() => setMuted((prev) => !prev)}
-          className={`p-4 rounded-full transition-all active:scale-90 ${muted ? "bg-red-500 hover:bg-red-600" : "bg-gray-800 hover:bg-gray-700 cursor-pointer"}`}
+          onClick={toggleMute}
+          className={`p-5 rounded-2xl transition-all ${muted ? "bg-red-500 text-white" : "bg-white/5 text-gray-400 hover:text-white cursor-pointer"}`}
         >
-          {muted ? (
-            <MicOff size={24} className="text-white" />
-          ) : (
-            <Mic size={24} className="text-white" />
-          )}
+          {muted ? <MicOff size={26} /> : <Mic size={26} />}
         </button>
 
-        {/* Screen Share Toggle Button */}
         <button
           onClick={onToggleScreen}
           disabled={callStatus !== "connected"}
-          className={`p-4 cursor-pointer rounded-full transition-all active:scale-90 disabled:opacity-20 ${isSharing ? "bg-blue-600 hover:bg-blue-700" : "bg-gray-800 hover:bg-gray-700"}`}
-          title={isSharing ? "Stop Sharing" : "Start Sharing"}
+          className={`p-5 rounded-2xl transition-all ${isSharing ? "bg-blue-600 text-white" : "bg-white/5 text-gray-400 hover:text-white cursor-pointer"} disabled:opacity-10`}
         >
-          {isSharing ? (
-            <MonitorOff size={24} className="text-white" />
-          ) : (
-            <Monitor size={24} className="text-white" />
-          )}
+          {isSharing ? <MonitorOff size={26} /> : <Monitor size={26} />}
         </button>
 
-        {/* End Call Button */}
         <button
           onClick={onEnd}
-          className="bg-red-600 text-white p-4 rounded-full hover:bg-red-700 transition-all shadow-lg hover:rotate-180 active:scale-95 duration-300 cursor-pointer"
+          className="bg-red-600 text-white p-5 rounded-2xl hover:bg-red-500 hover:rotate-180 cursor-pointer transition-all duration-500 shadow-xl active:scale-95"
         >
-          <Phone size={24} className="rotate-180" />
+          <Phone size={28} className="rotate-180 " />
         </button>
       </div>
+
+      {/* 4. Sidebar Invite Modal */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm `z-[70]` flex justify-end">
+          <div className="bg-[#0B0E11] w-full max-w-sm h-full border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
+            <div className="p-8 border-b border-white/5 flex justify-between items-center">
+              <h3 className="text-white text-xl font-bold">Add Participant</h3>
+              <X
+                className="text-gray-500 cursor-pointer"
+                onClick={() => setShowInviteModal(false)}
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {availableContacts.map((contact) => (
+                <div
+                  key={contact._id}
+                  className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors group"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                      {contact.username[0].toUpperCase()}
+                    </div>
+                    <span className="text-white text-sm font-medium">
+                      {contact.username}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      onInvite(contact._id);
+                      setShowInviteModal(false);
+                    }}
+                    className="bg-blue-600 text-white text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest"
+                  >
+                    Invite
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

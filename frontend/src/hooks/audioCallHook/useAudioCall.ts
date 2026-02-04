@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { io } from "socket.io-client";
 import { useWebRTC } from "./useWebRTC";
 import { useCallTimer } from "./useCallTimer";
@@ -15,8 +15,8 @@ export const useAudioCall = ({
   chatId,
   phoneNumber,
   receiverId,
+  currentUserName,
 }: any) => {
-  // --- States ---
   const [inCall, setInCall] = useState(false);
   const [isCaller, setIsCaller] = useState(false);
   const [callStatus, setCallStatus] = useState<
@@ -26,34 +26,96 @@ export const useAudioCall = ({
   const [receiverOnline, setReceiverOnline] = useState<boolean | null>(null);
   const [remoteIsSharing, setRemoteIsSharing] = useState(false);
 
-  // --- Sub-Hooks Integration ---
-  const { peerRef, localStream, remoteStream, initPeer, closeConnections } =
-    useWebRTC();
+  const {
+    peersRef,
+    localStream,
+    remoteStreams,
+    initPeer,
+    removePeer,
+    closeAllConnections,
+    getLocalMedia,
+  } = useWebRTC();
+
   const { duration, startTimer, stopTimer } = useCallTimer();
 
-  // Note: peerRef.current ko watch karne ke liye isay hooks ke flow mein rakhein
+  const primaryPeer = Array.from(peersRef.current.values())[0] || null;
   const { isSharing, startScreenShare, stopScreenShare } = useScreenShare(
-    peerRef.current,
+    primaryPeer,
     socket,
     chatId,
   );
 
-  // --- Actions ---
+  // --- 🔁 ICE Candidate Buffer ---
+  const candidateBufferRef = useRef<Map<string, RTCIceCandidateInit[]>>(
+    new Map(),
+  );
+
+  // Flush buffered ICE candidates after setting remote description
+  const flushCandidateBuffer = useCallback(async (peerId: string) => {
+    const peer = peersRef.current.get(peerId);
+    if (!peer) return;
+    const buffered = candidateBufferRef.current.get(peerId) || [];
+    if (buffered.length === 0) return;
+    console.log(
+      `🔁 Flushing ${buffered.length} buffered ICE candidates for ${peerId}`,
+    );
+    for (const c of buffered) {
+      try {
+        await peer.addIceCandidate(new RTCIceCandidate(c));
+      } catch (err) {
+        console.warn("Failed to add buffered ICE candidate:", err);
+      }
+    }
+    candidateBufferRef.current.delete(peerId);
+  }, []);
+
+  // 1️⃣ Invite user
+  const inviteUser = useCallback(
+    (targetUserId: string) => {
+      socket.emit("invite-to-call", {
+        chatId,
+        invitedUserId: targetUserId,
+        fromName: currentUserName || "A User",
+      });
+    },
+    [chatId, currentUserName],
+  );
+
+  // 2️⃣ Join group call
+  const joinGroupCall = useCallback(async () => {
+    socket.emit("join-call-room", { chatId });
+    setInCall(true);
+    setCallStatus("connected");
+    startTimer();
+  }, [chatId, startTimer]);
+
+  // 3️⃣ Reject call
+  const rejectCall = useCallback(() => {
+    if (incomingCall) {
+      socket.emit("reject-call", {
+        chatId,
+        to: incomingCall.from,
+        from: currentUserId,
+      });
+    }
+    setIncomingCall(null);
+    setInCall(false);
+  }, [incomingCall, chatId, currentUserId]);
+
+  // 4️⃣ End call
   const endCall = useCallback(
     (notify = true) => {
       if (notify) {
         socket.emit("end-call", { chatId, from: currentUserId, receiverId });
       }
-
       if (isSharing) stopScreenShare();
-
-      closeConnections();
+      closeAllConnections();
       stopTimer();
-
       setInCall(false);
       setIncomingCall(null);
       setIsCaller(false);
       setRemoteIsSharing(false);
+      setCallStatus("calling");
     },
     [
       chatId,
@@ -61,33 +123,35 @@ export const useAudioCall = ({
       receiverId,
       isSharing,
       stopScreenShare,
-      closeConnections,
+      closeAllConnections,
       stopTimer,
     ],
   );
 
-  const rejectCall = useCallback(() => {
-    if (incomingCall?.from) {
-      socket.emit("end-call", {
-        chatId,
-        from: currentUserId,
-        receiverId: incomingCall.from,
-        wasRejected: true,
-      });
-    }
-    setIncomingCall(null);
-  }, [incomingCall, chatId, currentUserId]);
-
+  // 5️⃣ Start Call (Caller)
   const startCall = async () => {
     setIsCaller(true);
     setInCall(true);
-    setCallStatus("calling");
 
-    const peer = await initPeer((candidate) => {
-      socket.emit("ice-candidate", { chatId, candidate, from: currentUserId });
+    // ✅ Ensure mic is initialized before offer
+    await getLocalMedia();
+
+    const peer = await initPeer(receiverId, (candidate) => {
+      socket.emit("ice-candidate", {
+        chatId,
+        candidate,
+        from: currentUserId,
+        toUserId: receiverId,
+      });
     });
 
-    const offer = await peer.createOffer();
+    // ✅ Create Offer immediately (no setTimeout race)
+    const offer = await peer.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: false,
+    });
+
+    console.log("Generated SDP Offer:", offer.sdp);
     await peer.setLocalDescription(offer);
 
     socket.emit("call-user", {
@@ -99,17 +163,27 @@ export const useAudioCall = ({
     });
   };
 
+  // 6️⃣ Accept Call (Receiver)
   const acceptCall = async () => {
     if (!incomingCall) return;
     setIsCaller(false);
 
-    const peer = await initPeer((candidate) => {
-      socket.emit("ice-candidate", { chatId, candidate, from: currentUserId });
+    await getLocalMedia();
+
+    const peer = await initPeer(incomingCall.from, (candidate) => {
+      socket.emit("ice-candidate", {
+        chatId,
+        candidate,
+        from: currentUserId,
+        toUserId: incomingCall.from,
+      });
     });
 
     await peer.setRemoteDescription(
       new RTCSessionDescription(incomingCall.offer),
     );
+    await flushCandidateBuffer(incomingCall.from);
+
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
 
@@ -126,7 +200,7 @@ export const useAudioCall = ({
     startTimer();
   };
 
-  // --- Socket Event Handlers ---
+  // --- Socket Events ---
   useCallSocket(
     socket,
     {
@@ -136,39 +210,95 @@ export const useAudioCall = ({
           setCallStatus("ringing");
         }
       },
-      onAnswered: async ({ answer }: any) => {
-        if (peerRef.current && answer) {
-          await peerRef.current.setRemoteDescription(
-            new RTCSessionDescription(answer),
-          );
+
+      // 🧩 When call answered
+      onAnswered: async ({ answer, from }: any) => {
+        const targetId = from || receiverId;
+        const peer = peersRef.current.get(targetId);
+        if (peer && answer) {
+          await peer.setRemoteDescription(new RTCSessionDescription(answer));
+          await flushCandidateBuffer(targetId);
+          setCallStatus("connected");
+          setInCall(true);
+          startTimer();
         }
-        setCallStatus("connected");
-        startTimer();
       },
-      onIce: async ({ candidate }: any) => {
-        if (peerRef.current?.remoteDescription && candidate) {
+
+      onRejected: () => {
+        endCall(false);
+        alert("Call rejected");
+      },
+
+      // 🧊 Handle ICE candidate (buffer before remoteDescription is ready)
+      onIce: async ({ candidate, from }: any) => {
+        if (from === currentUserId) return;
+        const peer = peersRef.current.get(from);
+        if (
+          peer &&
+          candidate &&
+          peer.remoteDescription &&
+          peer.remoteDescription.type
+        ) {
           try {
-            await peerRef.current.addIceCandidate(
-              new RTCIceCandidate(candidate),
-            );
-          } catch (e) {
-            console.error("ICE Error", e);
+            await peer.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("✅ ICE Candidate added for", from);
+          } catch (err) {
+            console.warn("Failed to add ICE candidate immediately:", err);
           }
+          return;
         }
+
+        const buf = candidateBufferRef.current.get(from) ?? [];
+        buf.push(candidate);
+        candidateBufferRef.current.set(from, buf);
+        console.log("🧾 Buffered ICE candidate for", from);
       },
+
       onStatus: ({ isOnline }: any) => {
         setReceiverOnline(isOnline);
-        setCallStatus(isOnline ? "ringing" : "calling");
+        if (!inCall) setCallStatus(isOnline ? "ringing" : "calling");
       },
-      onEnded: () => endCall(false),
+
+      onEnded: ({ from }: any) => {
+        if (from && peersRef.current.size > 1) {
+          removePeer(from);
+        } else {
+          endCall(false);
+        }
+      },
+
+      onInviteReceived: (data: any) => {
+        setIncomingCall({ ...data, isInvite: true });
+      },
+
+      onUserJoinedGroup: async ({ userId }: any) => {
+        const peer = await initPeer(userId, (candidate) => {
+          socket.emit("ice-candidate", {
+            chatId,
+            candidate,
+            from: currentUserId,
+            toUserId: userId,
+          });
+        });
+        const offer = await peer.createOffer({ offerToReceiveAudio: true });
+        await peer.setLocalDescription(offer);
+        socket.emit("call-user", {
+          chatId,
+          from: currentUserId,
+          receiverId: userId,
+          offer,
+          phoneNumber,
+        });
+      },
+
       onScreenSignal: async ({ offer, isSharing: rShared }: any) => {
-        if (offer && peerRef.current) {
-          await peerRef.current.setRemoteDescription(
-            new RTCSessionDescription(offer),
-          );
-          if (peerRef.current.remoteDescription?.type === "offer") {
-            const answer = await peerRef.current.createAnswer();
-            await peerRef.current.setLocalDescription(answer);
+        const [peerId, peer] = Array.from(peersRef.current.entries())[0] || [];
+        if (offer && peer) {
+          await peer.setRemoteDescription(new RTCSessionDescription(offer));
+          await flushCandidateBuffer(peerId);
+          if (peer.remoteDescription?.type === "offer") {
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
             socket.emit("screen-sharing-signal", {
               chatId,
               offer: answer,
@@ -184,11 +314,12 @@ export const useAudioCall = ({
   );
 
   return {
+    socket,
     inCall,
     isCaller,
     incomingCall,
     localStream,
-    remoteStream,
+    remoteStreams,
     callDuration: duration,
     startCall,
     acceptCall,
@@ -200,5 +331,7 @@ export const useAudioCall = ({
     remoteIsSharing,
     startScreenShare,
     stopScreenShare,
+    inviteUser,
+    joinGroupCall,
   };
 };

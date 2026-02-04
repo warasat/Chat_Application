@@ -18,6 +18,7 @@ import CallModal from "../components/CallModal";
 import InCallScreen from "../components/InCallScreen";
 import { IoCallOutline } from "react-icons/io5";
 import { useAuth } from "../context/AuthContext";
+import { useUsers } from "../hooks/useUser";
 
 interface ChatPageProps {
   chatId: string;
@@ -35,6 +36,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const { user: currentUser } = useAuth();
+  const { users: allContacts } = useUsers(currentUserId);
 
   // --- Hooks ---
   const {
@@ -126,11 +128,12 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
 
   // --- Audio Call Hook ---
   const {
+    socket,
     inCall,
     isCaller,
     incomingCall,
     localStream,
-    remoteStream,
+    remoteStreams, // remoteStream ko remoteStreams (plural) kar diya
     startCall,
     acceptCall,
     rejectCall,
@@ -142,11 +145,14 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     remoteIsSharing,
     startScreenShare,
     stopScreenShare,
+    inviteUser, // Naya function
+    joinGroupCall, // Naya function
   } = useAudioCall({
     currentUserId,
     receiverId: receiver._id,
     chatId,
     phoneNumber: currentUser!.phoneNumber,
+    currentUserName: currentUser!.username, // Yeh zaroori hai invite ke liye
   });
 
   return (
@@ -207,6 +213,8 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
               }
               currentUserId={currentUserId}
               onImageClick={openImageModal}
+              onJoinGroupCall={joinGroupCall} // useAudioCall se aya hua function
+              onRejectCall={rejectCall} // useAudioCall se aya hua function
             />
           ))}
           <div ref={scrollRef} />
@@ -364,7 +372,7 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
           <InCallScreen
             callStatus={callStatus}
             localStream={localStream}
-            remoteStream={remoteStream}
+            remoteStreams={remoteStreams}
             callDuration={callDuration}
             receiverOnline={receiverOnline}
             isCaller={isCaller}
@@ -372,6 +380,52 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
             isSharing={isSharing}
             remoteIsSharing={remoteIsSharing}
             onToggleScreen={isSharing ? stopScreenShare : startScreenShare}
+            // 2. Mapping contacts and invite logic
+            availableContacts={allContacts}
+            onInvite={async (targetUserId) => {
+              // 1. Real-time Popup (Signal)
+              inviteUser(targetUserId);
+
+              const participantIds = [currentUserId, targetUserId].sort();
+              const targetChatId = `${participantIds[0]}_${participantIds[1]}`;
+
+              try {
+                const invitePayload = {
+                  chatId: targetChatId,
+                  senderId: currentUserId,
+                  receiverId: targetUserId,
+                  content: `📞 JOIN CALL: I am inviting you to an ongoing group call.`,
+                  type: "text",
+                  message_time: new Date().toISOString(),
+                };
+
+                // 2. API call to save in DB
+                const response = await fetch(
+                  `${import.meta.env.VITE_API_URL}/messages/send`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${localStorage.getItem("token")}`,
+                    },
+                    body: JSON.stringify(invitePayload),
+                  },
+                );
+
+                const savedMsg = await response.json();
+
+                // 3. 🚀 THE FIX: Socket emit taake User C ko message FORAN dikhe
+                // 'new-message' ya 'send-message' jo bhi aapka socket event hai
+                socket.emit("message", {
+                  ...invitePayload,
+                  _id: savedMsg._id || Date.now().toString(), // Temp ID if needed
+                });
+
+                console.log("✅ Invite message pushed via socket");
+              } catch (err) {
+                console.error("❌ Error sending invite:", err);
+              }
+            }}
           />
         )}
       </div>
