@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef } from "react";
-import { io } from "socket.io-client";
+import { useState, useCallback, useRef, useEffect } from "react";
+// import { io } from "socket.io-client";
 import { useWebRTC } from "./useWebRTC";
 import { useCallTimer } from "./useCallTimer";
 import { useCallSocket } from "./useCallSocket";
@@ -67,23 +67,124 @@ export const useAudioCall = ({
 
   // 1️⃣ Invite user
   const inviteUser = useCallback(
-    (targetUserId: string) => {
+    async (targetUserId: string) => {
+      // 1. SIGNALING: User C ko batana ke "Is Room ID mein aao"
+      // Yahan hum wahi 'chatId' bhejenge jo A aur B use kar rahe hain
       socket.emit("invite-to-call", {
-        chatId,
+        chatId: chatId, // CURRENT active call room ID
         invitedUserId: targetUserId,
         fromName: currentUserName || "A User",
       });
+
+      try {
+        // 2. CHAT HISTORY: User C ke inbox mein message dikhane ke liye
+        // Inbox ke liye humein unka private chatId (A_C) chahiye
+        const participantIds = [currentUserId, targetUserId].sort();
+        const privateChatIdForInbox = `${participantIds[0]}_${participantIds[1]}`;
+
+        const invitePayload = {
+          chatId: privateChatIdForInbox, // Message C ke inbox mein jaye
+          senderId: currentUserId,
+          receiverId: targetUserId,
+          // Content mein hum signal dete hain ke asli call room 'chatId' hai
+          content: `📞 JOIN CALL: I am inviting you to an ongoing group call. Join Room: ${chatId}`,
+          type: "text",
+          message_time: new Date().toISOString(),
+        };
+
+        // 3. API Call to DB
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/messages/send`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+            body: JSON.stringify(invitePayload),
+          },
+        );
+
+        const savedMsg = await response.json();
+
+        // 4. SOCKET MESSAGE: Real-time bubble for User C
+        socket.emit("message", {
+          ...invitePayload,
+          _id: savedMsg._id || Date.now().toString(),
+          callRoomId: chatId, // Extra field taake frontend ko pata ho join kahan karna hai
+        });
+
+        console.log("✅ Invite sent to User C for Room:", chatId);
+      } catch (err) {
+        console.error("❌ Failed to send invite message:", err);
+      }
     },
-    [chatId, currentUserName],
+    [chatId, currentUserId, currentUserName], // Dependencies are correct
   );
 
   // 2️⃣ Join group call
   const joinGroupCall = useCallback(async () => {
-    socket.emit("join-call-room", { chatId });
+    const targetRoomId = incomingCall?.chatId || chatId;
+    if (!targetRoomId) return;
+
+    await getLocalMedia();
+
+    // 🔥 Direct active state mein jayein
     setInCall(true);
     setCallStatus("connected");
-    startTimer();
-  }, [chatId, startTimer]);
+    setIncomingCall(null);
+    if (duration === 0) startTimer();
+
+    socket.emit("join-call-room", {
+      chatId: targetRoomId,
+      userId: currentUserId,
+    });
+  }, [
+    chatId,
+    incomingCall,
+    currentUserId,
+    getLocalMedia,
+    startTimer,
+    duration,
+  ]);
+
+  // group ignore call
+  const ignoreInvite = useCallback(async () => {
+    if (incomingCall) {
+      const participantIds = [currentUserId, incomingCall.from].sort();
+      const targetChatId = `${participantIds[0]}_${participantIds[1]}`;
+
+      // 1. SIGNAL: Socket ko batayein ke invite ignore ho gaya hai (Reject nahi!)
+      socket.emit("call-ignored", {
+        chatId: chatId, // Current group call room
+        to: incomingCall.from,
+        from: currentUserId,
+      });
+
+      // 2. MESSAGE: Chat bubble ke liye
+      const ignorePayload = {
+        chatId: targetChatId,
+        senderId: currentUserId,
+        receiverId: incomingCall.from,
+        content: "declined your invite",
+        type: "call_rejected",
+      };
+
+      socket.emit("message", { ...ignorePayload, to: incomingCall.from });
+
+      // 3. DB Save
+      await fetch(`${import.meta.env.VITE_API_URL}/messages/send`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify(ignorePayload),
+      });
+
+      setIncomingCall(null);
+    }
+  }, [incomingCall, currentUserId, socket, chatId]);
 
   // 3️⃣ Reject call
   const rejectCall = useCallback(() => {
@@ -102,9 +203,18 @@ export const useAudioCall = ({
   const endCall = useCallback(
     (notify = true) => {
       if (notify) {
-        socket.emit("end-call", { chatId, from: currentUserId, receiverId });
+        // Backend logic will now check room size before broadcasting
+        socket.emit("end-call", {
+          chatId,
+          from: currentUserId,
+          receiverId, // Note: receiverId is usually for 1-on-1,
+          // for groups the backend uses the room.
+        });
       }
+
       if (isSharing) stopScreenShare();
+
+      // 🔥 Crucial: Clean up local state
       closeAllConnections();
       stopTimer();
       setInCall(false);
@@ -160,63 +270,75 @@ export const useAudioCall = ({
   };
 
   // 6️⃣ Accept Call (Receiver)
-  const acceptCall = async () => {
-    if (!incomingCall) return;
-    setIsCaller(false);
+  const acceptCall = useCallback(
+    async (customOffer?: any, customFrom?: string) => {
+      const offer =
+        customOffer && customOffer.type !== "click"
+          ? customOffer
+          : incomingCall?.offer;
+      const from =
+        customFrom && typeof customFrom === "string"
+          ? customFrom
+          : incomingCall?.from;
 
-    await getLocalMedia();
+      if (!offer || !from) {
+        console.error("❌ No valid offer or sender found");
+        return;
+      }
 
-    const peer = await initPeer(incomingCall.from, (candidate) => {
-      socket.emit("ice-candidate", {
-        chatId,
-        candidate,
-        from: currentUserId,
-        toUserId: incomingCall.from,
+      await getLocalMedia();
+      const peer = await initPeer(from, (candidate) => {
+        socket.emit("ice-candidate", {
+          chatId,
+          candidate,
+          from: currentUserId,
+          toUserId: from,
+        });
       });
-    });
 
-    await peer.setRemoteDescription(
-      new RTCSessionDescription(incomingCall.offer),
-    );
-    await flushCandidateBuffer(incomingCall.from);
+      await peer.setRemoteDescription(new RTCSessionDescription(offer));
+      await flushCandidateBuffer(from);
 
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
 
-    socket.emit("answer-call", {
+      socket.emit("answer-call", {
+        chatId,
+        answer,
+        from,
+        receiverId: currentUserId,
+      });
+
+      setIncomingCall(null);
+      setInCall(true);
+      setCallStatus("connected");
+      if (duration === 0) startTimer();
+    },
+    [
+      incomingCall,
+      getLocalMedia,
+      initPeer,
+      currentUserId,
       chatId,
-      answer,
-      from: incomingCall.from,
-      receiverId: currentUserId,
-    });
-
-    // ✅ NEW: Attach remote stream and play audio
-    Object.values(remoteStreams).forEach((stream) => {
-      const audioEl = document.createElement("audio");
-      audioEl.srcObject = stream;
-      audioEl.autoplay = true;
-      audioEl.volume = 1;
-      document.body.appendChild(audioEl);
-
-      // Force play after user gesture
-      audioEl
-        .play()
-        .then(() => console.log("Audio playing"))
-        .catch((err) => console.warn("Playback blocked:", err.name));
-    });
-
-    setIncomingCall(null);
-    setInCall(true);
-    setCallStatus("connected");
-    startTimer();
-  };
+      flushCandidateBuffer,
+      duration,
+      startTimer,
+    ],
+  );
 
   // --- Socket Events ---
   useCallSocket(
     socket,
     {
-      onIncoming: (data: any) => {
-        if (data.from !== currentUserId) {
+      onIncoming: async (data: any) => {
+        if (data.from === currentUserId) return;
+
+        // 🔥 Agar pehle se call mein hain, toh popup ke bajaye background mein connect karein
+        if (inCall || callStatus === "connected") {
+          console.log("🔗 Auto-connecting new participant in background...");
+          await acceptCall(data.offer, data.from);
+        } else {
+          // Sirf tab popup dikhayein jab user free ho
           setIncomingCall(data);
           setCallStatus("ringing");
         }
@@ -270,19 +392,36 @@ export const useAudioCall = ({
         if (!inCall) setCallStatus(isOnline ? "ringing" : "calling");
       },
 
-      onEnded: ({ from }: any) => {
-        if (from && peersRef.current.size > 1) {
-          removePeer(from);
-        } else {
-          endCall(false);
+      // onLeft Call
+      // useCallSocket ke andar in do events ko replace karein:
+
+      onUserLeft: ({ from }: any) => {
+        console.log(`👤 User Left Signal: ${from}`);
+        if (from) {
+          removePeer(from); // Ye Map aur RemoteStreams dono se delete karega
         }
+      },
+
+      // 2. System Level End Signal
+      onEnded: ({ reason }: any) => {
+        console.log("🛑 Call Ended by System:", reason);
+        endCall(false);
       },
 
       onInviteReceived: (data: any) => {
         setIncomingCall({ ...data, isInvite: true });
       },
 
+      // useCallSocket hook ke andar isko update karein:
+
       onUserJoinedGroup: async ({ userId }: any) => {
+        // Khud ko connect karne ki koshish na karein
+        if (userId === currentUserId) return;
+
+        console.log(
+          `👤 New user joined: ${userId}. Initiating Peer and Sending Offer...`,
+        );
+
         const peer = await initPeer(userId, (candidate) => {
           socket.emit("ice-candidate", {
             chatId,
@@ -291,8 +430,14 @@ export const useAudioCall = ({
             toUserId: userId,
           });
         });
-        const offer = await peer.createOffer({ offerToReceiveAudio: true });
+
+        const offer = await peer.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: false,
+        });
+
         await peer.setLocalDescription(offer);
+
         socket.emit("call-user", {
           chatId,
           from: currentUserId,
@@ -323,6 +468,19 @@ export const useAudioCall = ({
     chatId,
     currentUserId,
   );
+  //UseEffect
+  useEffect(() => {
+    if (inCall && Object.keys(remoteStreams).length === 0) {
+      // Chota sa delay taake temporary reconnection issues par call na kate
+      const timer = setTimeout(() => {
+        if (inCall && Object.keys(remoteStreams).length === 0) {
+          console.log("⚠️ No active remote streams left. Closing call.");
+          endCall(false);
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [remoteStreams, inCall, endCall]);
 
   return {
     socket,
@@ -344,5 +502,6 @@ export const useAudioCall = ({
     stopScreenShare,
     inviteUser,
     joinGroupCall,
+    ignoreInvite,
   };
 };

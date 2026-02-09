@@ -359,10 +359,12 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
         />
 
         {/* INCOMING CALL POPUP */}
-        {incomingCall && !inCall && (
+        {incomingCall && !incomingCall.isInvite && (
           <CallModal
-            callerPhoneNumber={incomingCall.phoneNumber}
-            isOnline={incomingCall.isOnline}
+            callerPhoneNumber={
+              incomingCall.phoneNumber || incomingCall.fromName
+            }
+            isOnline={!!receiverOnline}
             onAccept={acceptCall}
             onReject={rejectCall}
           />

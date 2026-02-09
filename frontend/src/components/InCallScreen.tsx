@@ -91,6 +91,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
 }) => {
   const [muted, setMuted] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
 
   const toggleMute = () => {
     const newMuted = !muted;
@@ -142,47 +143,76 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
       {/* Center Content */}
       <div className="flex-1 w-full flex flex-col items-center justify-center relative z-10">
         {!remoteIsSharing ? (
-          <div className="relative">
-            {callStatus !== "connected" && (
-              <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping scale-125 blur-xl" />
-            )}
-            <div
-              className={`w-44 h-44 rounded-full flex items-center justify-center border-4 shadow-2xl transition-all duration-500 ${
-                callStatus === "connected"
-                  ? "bg-green-600/10 border-green-500 shadow-green-500/20"
-                  : "bg-gray-900 border-gray-800"
-              }`}
-            >
-              <Phone
-                size={70}
-                className={`${
-                  callStatus === "connected"
-                    ? "text-green-500"
-                    : "text-gray-600 animate-pulse"
-                }`}
-              />
-              {receiverOnline && (
-                <div
-                  className="absolute top-4 right-4 w-5 h-5 bg-green-500 rounded-full border-4 border-[#0B0E11] z-20 shadow-lg"
-                  title="User is Online"
-                />
+          <div className="flex flex-col items-center gap-12 w-full max-w-4xl">
+            {/* 1. Main Caller Area (Center) */}
+            <div className="relative">
+              {callStatus !== "connected" && (
+                <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping scale-125 blur-xl" />
               )}
+              <div
+                className={`w-44 h-44 rounded-full flex items-center justify-center border-4 shadow-2xl transition-all duration-500 ${
+                  callStatus === "connected"
+                    ? "bg-green-600/10 border-green-500 shadow-green-500/20"
+                    : "bg-gray-900 border-gray-800"
+                }`}
+              >
+                <Phone
+                  size={70}
+                  className={`${
+                    callStatus === "connected"
+                      ? "text-green-500"
+                      : "text-gray-600 animate-pulse"
+                  }`}
+                />
+                {receiverOnline && (
+                  <div
+                    className="absolute top-4 right-4 w-5 h-5 bg-green-500 rounded-full border-4 border-[#0B0E11] z-20 shadow-lg"
+                    title="User is Online"
+                  />
+                )}
+              </div>
+              <div
+                className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
+                  callStatus === "connected"
+                    ? "bg-green-600 text-white"
+                    : "bg-blue-600 text-white"
+                }`}
+              >
+                {callStatus === "connected"
+                  ? "Active Session"
+                  : receiverOnline
+                    ? "Ringing..."
+                    : "Calling..."}
+              </div>
             </div>
-            <div
-              className={`absolute -bottom-3 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                callStatus === "connected"
-                  ? "bg-green-600 text-white"
-                  : "bg-blue-600 text-white"
-              }`}
-            >
-              {callStatus === "connected"
-                ? "Active"
-                : receiverOnline
-                  ? "Ringing..."
-                  : "Calling..."}
-            </div>
+
+            {/* 🚀 2. Group Participants Grid (Naye log yahan dikhenge) */}
+            {Object.keys(remoteStreams).length > 0 && (
+              <div className="flex flex-wrap justify-center gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {Object.entries(remoteStreams).map(([userId], index) => (
+                  <div
+                    key={userId}
+                    className="flex flex-col items-center gap-2 group"
+                  >
+                    <div className="w-20 h-20 rounded-2xl  from-indigo-600 to-purple-700 flex items-center justify-center text-white border-2 border-white/10 shadow-xl group-hover:scale-110 transition-transform">
+                      <span className="text-xl font-bold font-mono">
+                        {/* Participant index dikhayega, aap baad mein naam bhi map kar sakte hain */}
+                        P{index + 1}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-tighter">
+                        Connected
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
+          /* Screen Sharing Logic (Same as before) */
           <div className="w-full h-full max-w-4xl p-4">
             {Object.values(remoteStreams)[0] && (
               <ScreenView
@@ -193,21 +223,11 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
           </div>
         )}
 
-        {/* ✅ Off-screen Remote Audio */}
-        <div
-          style={{
-            position: "absolute",
-            width: "1px",
-            height: "1px",
-            opacity: 0,
-            pointerEvents: "none",
-            overflow: "hidden",
-          }}
-        >
+        {/* ✅ Audio & Local Video (Hidden) - Unchanged but kept for structure */}
+        <div className="hidden pointer-events-none invisible">
           {Object.entries(remoteStreams).map(([userId, stream]) => (
             <RemoteAudio key={userId} stream={stream} />
           ))}
-
           <video
             ref={(el) => {
               if (el && localStream && el.srcObject !== localStream) {
@@ -255,45 +275,65 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
       </div>
 
       {/* Invite Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm `z-[70]` flex justify-end">
-          <div className="bg-[#0B0E11] w-full max-w-sm h-full border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
-            <div className="p-8 border-b border-white/5 flex justify-between items-center">
-              <h3 className="text-white text-xl font-bold">Add Participant</h3>
-              <X
-                className="text-gray-500 cursor-pointer"
-                onClick={() => setShowInviteModal(false)}
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {availableContacts.map((contact) => (
-                <div
-                  key={contact._id}
-                  className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors group"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                      {contact.username[0].toUpperCase()}
-                    </div>
-                    <span className="text-white text-sm font-medium">
-                      {contact.username}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => {
-                      onInvite(contact._id);
-                      setShowInviteModal(false);
-                    }}
-                    className="bg-blue-600 text-white text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest"
-                  >
-                    Invite
-                  </button>
+     {showInviteModal && (
+  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-70 flex justify-end">
+    <div className="bg-[#0B0E11] w-full max-w-sm h-full border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
+      
+      {/* Header with Close Icon */}
+      <div className="p-8 border-b border-white/5 flex justify-between items-center">
+        <h3 className="text-white text-xl font-bold">Add Participant</h3>
+        <button 
+          onClick={() => setShowInviteModal(false)}
+          className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer text-gray-400 hover:text-white"
+        >
+          <X size={24} />
+        </button>
+      </div>
+
+      {/* Contacts List */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        {availableContacts.map((contact) => {
+          const isInvited = invitedUsers.includes(contact._id);
+          
+          return (
+            <div
+              key={contact._id}
+              className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                  {contact.username[0].toUpperCase()}
                 </div>
-              ))}
+                <span className="text-white text-sm font-medium">
+                  {contact.username}
+                </span>
+              </div>
+
+              {/* Invite / Invited Button */}
+              <button
+                disabled={isInvited}
+                onClick={() => {
+                  onInvite(contact._id);
+                  setInvitedUsers((prev) => [...prev, contact._id]);
+                  // Note: Hum Modal close nahi kar rahe taaki user multiple logo ko invite kar sake
+                  // Agar aap chahte hain close ho jaye toh niche wali line uncomment karein:
+                  // setTimeout(() => setShowInviteModal(false), 800);
+                }}
+                className={`text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest transition-all cursor-pointer active:scale-95 ${
+                  isInvited 
+                    ? "bg-green-600/20 text-green-500 border border-green-500/50 cursor-default" 
+                    : "bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20"
+                }`}
+              >
+                {isInvited ? "Invited" : "Invite"}
+              </button>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })}
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 };

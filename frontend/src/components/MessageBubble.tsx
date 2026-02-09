@@ -1,6 +1,7 @@
 import type { Message } from "../types/message";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { useState } from "react"; // useState add kiya
 import {
   PhoneOff,
   PhoneIncoming,
@@ -14,8 +15,8 @@ interface MessageBubbleProps {
   message: Message;
   currentUserId: string;
   onImageClick?: (url: string) => void;
-  onJoinGroupCall?: () => void; // Naya Prop
-  onRejectCall?: () => void; // Naya Prop
+  onJoinGroupCall?: () => void;
+  onRejectCall?: () => void;
 }
 
 const MessageBubble = ({
@@ -25,13 +26,22 @@ const MessageBubble = ({
   onJoinGroupCall,
   onRejectCall,
 }: MessageBubbleProps) => {
+  // Local state taake buttons foran change ho jayein "Ignored" label mein
+  const [isIgnored, setIsIgnored] = useState(false);
+
   const isMe = (message.sender_id || message.senderId) === currentUserId;
   const messageType = message.type as any;
   const content = message.content || "";
 
   // 1️⃣ SPECIAL CASE: GROUP CALL INVITE CARD
-  // Hum check kar rahe hain agar content mein hamara specific invite keyword hai
   const isInvite = content.includes("JOIN CALL:");
+
+  const handleIgnoreAction = () => {
+    if (onRejectCall) {
+      onRejectCall(); // Yeh ignoreInvite() function ko trigger karega
+      setIsIgnored(true); // Local UI ko update karega
+    }
+  };
 
   if (isInvite && !isMe) {
     return (
@@ -55,26 +65,36 @@ const MessageBubble = ({
             You have been invited to join an ongoing audio call.
           </p>
 
-          <div className="flex gap-2">
-            <button
-              onClick={onJoinGroupCall}
-              className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
-            >
-              <CheckCircle size={14} /> Join
-            </button>
-            <button
-              onClick={onRejectCall}
-              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
-            >
-              <XCircle size={14} /> Ignore
-            </button>
-          </div>
+          {/* Conditional Rendering: Buttons dikhana ya Ignored Status */}
+          {!isIgnored ? (
+            <div className="flex gap-2 animate-in fade-in duration-300">
+              <button
+                onClick={onJoinGroupCall}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white text-[11px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+              >
+                <CheckCircle size={14} /> Join
+              </button>
+              <button
+                onClick={handleIgnoreAction}
+                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 text-[11px] font-bold py-2 px-3 rounded-lg flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+              >
+                <XCircle size={14} /> Ignore
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-2 py-2 bg-gray-50 rounded-lg border border-dashed border-gray-200 animate-in zoom-in duration-300">
+              <XCircle size={14} className="text-gray-400" />
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                Ignored
+              </span>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // 2️⃣ CALL STATUS MESSAGES (Existing Logic)
+  // 2️⃣ CALL STATUS MESSAGES
   const callTypes = ["missed_call", "call_accepted", "call_rejected"];
   if (callTypes.includes(messageType)) {
     let config = {
@@ -106,11 +126,16 @@ const MessageBubble = ({
         break;
       case "call_rejected":
         config = {
-          label: isMe ? "Call Declined" : "Call Rejected",
+          // Label logic fix:
+          // User C (jisne ignore kiya): "You declined the invite"
+          // User A (jisne bheja tha): "Invited user ignored the call"
+          label: isMe
+            ? "You declined the invite"
+            : "Invited user ignored the call",
           icon: <PhoneOff size={14} />,
-          colorClass: "text-gray-600",
-          bgClass: "bg-gray-50 border-gray-200",
-          iconBg: "bg-gray-200",
+          colorClass: "text-red-500",
+          bgClass: "bg-red-50 border-red-100",
+          iconBg: "bg-red-100",
         };
         break;
     }

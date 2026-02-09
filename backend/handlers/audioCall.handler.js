@@ -83,22 +83,38 @@ export const registerCallHandlers = (io, socket) => {
   });
 
   // --- 3. End/Reject call ---
-  socket.on("end-call", async ({ chatId, from, receiverId, wasRejected }) => {
-    clearCallTimeout(chatId);
-    console.log(`🛑 Call ended/rejected in room call_${chatId} by ${from}`);
+  // --- Modified End/Reject call ---
+  socket.on("end-call", async ({ chatId, from }) => {
+    const callRoom = `call_${chatId}`;
 
-    if (wasRejected) {
-      await callService.logCallEvent(io, {
-        chatId,
+    // 1. Socket ko room se nikal dein
+    socket.leave(callRoom);
+    console.log(`User ${from} left room ${chatId}`);
+
+    // 2. Check karein ke room mein ab kon bacha hai
+    const room = io.sockets.adapter.rooms.get(callRoom);
+    const remainingCount = room ? room.size : 0;
+
+    if (remainingCount >= 2) {
+      // Case: A gaya, B aur C bache hain
+      // B aur C ko sirf 'left' ka batayein
+      socket.to(callRoom).emit("user-left", { from });
+    } else {
+      // Case: B gaya, sirf C bacha (ya koi nahi)
+      // Ab C ko hang nahi rehne dena, poori call terminate karein
+      io.to(callRoom).emit("call-ended", {
         from,
-        receiverId,
-        type: "call_rejected",
-        content: "Call Declined",
+        reason: "insufficient-participants",
       });
-    }
 
-    io.to(`call_${chatId}`).emit("call-ended", { from });
-    socket.leave(`call_${chatId}`);
+      // Room ko fully flush karein (Last user ko force exit karwayein)
+      if (room) {
+        room.forEach((socketId) => {
+          const s = io.sockets.sockets.get(socketId);
+          if (s) s.leave(callRoom);
+        });
+      }
+    }
   });
   socket.on("reject-call", async ({ chatId, to, from }) => {
     clearCallTimeout(chatId);
@@ -158,6 +174,26 @@ export const registerCallHandlers = (io, socket) => {
 
     // Notify others in room to start peer connection with this new user
     socket.to(callRoom).emit("user-joined-group", { userId: socket.senderId });
+  });
+
+  // --- NEW: Invited User Ignores Call ---
+  socket.on("call-ignored", ({ chatId, to, from }) => {
+    console.log(`🟡 Call IGNORED by ${from} for caller ${to}`);
+
+    // 1. Caller ko notify karein ke participant ne ignore kiya hai
+    // Hum 'call-ended' emit NAHI karenge taake active call chalti rahe
+    const callerSocket = Array.from(io.sockets.sockets.values()).find(
+      (s) => s.senderId === to,
+    );
+
+    if (callerSocket) {
+      // Hum aik naya event emit kar rahe hain 'call-ignored'
+      // Frontend isay listen karega bina call disconnect kiye
+      io.to(callerSocket.id).emit("call-ignored", { from });
+    }
+
+    // Note: Hum yahan io.to(room).emit("call-ended") NAHI kar rahe.
+    // Yehi woh point hai jo User A aur B ki call ko bachaaye ga.
   });
 
   // --- 6. Signaling (ICE & Screen Share) ---
