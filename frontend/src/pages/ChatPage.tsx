@@ -133,11 +133,12 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     isCaller,
     incomingCall,
     localStream,
-    remoteStreams, // remoteStream ko remoteStreams (plural) kar diya
+    remoteStreams,
     startCall,
     acceptCall,
     rejectCall,
-    endCall,
+    leaveCall, // Naya function
+    terminateCall, // Naya function
     callDuration,
     receiverOnline,
     callStatus,
@@ -145,14 +146,14 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
     remoteIsSharing,
     startScreenShare,
     stopScreenShare,
-    inviteUser, // Naya function
-    joinGroupCall, // Naya function
+    inviteUser,
+    joinGroupCall,
   } = useAudioCall({
     currentUserId,
     receiverId: receiver._id,
     chatId,
     phoneNumber: currentUser!.phoneNumber,
-    currentUserName: currentUser!.username, // Yeh zaroori hai invite ke liye
+    currentUserName: currentUser!.username,
   });
 
   return (
@@ -378,55 +379,17 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
             callDuration={callDuration}
             receiverOnline={receiverOnline}
             isCaller={isCaller}
-            onEnd={endCall}
+            // 🔥 FIX 1: Agar Caller hai to Terminate kare (Sab ke liye),
+            // warna sirf Leave (Sirf apne liye)
+            onEnd={isCaller ? terminateCall : leaveCall}
             isSharing={isSharing}
             remoteIsSharing={remoteIsSharing}
             onToggleScreen={isSharing ? stopScreenShare : startScreenShare}
-            // 2. Mapping contacts and invite logic
             availableContacts={allContacts}
-            onInvite={async (targetUserId) => {
-              // 1. Real-time Popup (Signal)
+            // 🔥 FIX 2: Lamba logic khatam. Hook ab fetch aur socket khud handle kar raha hai.
+            onInvite={(targetUserId) => {
               inviteUser(targetUserId);
-
-              const participantIds = [currentUserId, targetUserId].sort();
-              const targetChatId = `${participantIds[0]}_${participantIds[1]}`;
-
-              try {
-                const invitePayload = {
-                  chatId: targetChatId,
-                  senderId: currentUserId,
-                  receiverId: targetUserId,
-                  content: `📞 JOIN CALL: I am inviting you to an ongoing group call.`,
-                  type: "text",
-                  message_time: new Date().toISOString(),
-                };
-
-                // 2. API call to save in DB
-                const response = await fetch(
-                  `${import.meta.env.VITE_API_URL}/messages/send`,
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${localStorage.getItem("token")}`,
-                    },
-                    body: JSON.stringify(invitePayload),
-                  },
-                );
-
-                const savedMsg = await response.json();
-
-                // 3. 🚀 THE FIX: Socket emit taake User C ko message FORAN dikhe
-                // 'new-message' ya 'send-message' jo bhi aapka socket event hai
-                socket.emit("message", {
-                  ...invitePayload,
-                  _id: savedMsg._id || Date.now().toString(), // Temp ID if needed
-                });
-
-                console.log("✅ Invite message pushed via socket");
-              } catch (err) {
-                console.error("❌ Error sending invite:", err);
-              }
+              console.log("🚀 Invite process started for user:", targetUserId);
             }}
           />
         )}

@@ -92,6 +92,7 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
   const [muted, setMuted] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [invitedUsers, setInvitedUsers] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const toggleMute = () => {
     const newMuted = !muted;
@@ -226,8 +227,10 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
         {/* ✅ Audio & Local Video (Hidden) - Unchanged but kept for structure */}
         <div className="hidden pointer-events-none invisible">
           {Object.entries(remoteStreams).map(([userId, stream]) => (
-            <RemoteAudio key={userId} stream={stream} />
+            /* 🔥 FIX: Key mein userId ke saath stream.id bhi lagayein unique banane ke liye */
+            <RemoteAudio key={`${userId}-${stream.id}`} stream={stream} />
           ))}
+
           <video
             ref={(el) => {
               if (el && localStream && el.srcObject !== localStream) {
@@ -275,65 +278,91 @@ const InCallScreen: React.FC<InCallScreenProps> = ({
       </div>
 
       {/* Invite Modal */}
-     {showInviteModal && (
-  <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-70 flex justify-end">
-    <div className="bg-[#0B0E11] w-full max-w-sm h-full border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
-      
-      {/* Header with Close Icon */}
-      <div className="p-8 border-b border-white/5 flex justify-between items-center">
-        <h3 className="text-white text-xl font-bold">Add Participant</h3>
-        <button 
-          onClick={() => setShowInviteModal(false)}
-          className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer text-gray-400 hover:text-white"
-        >
-          <X size={24} />
-        </button>
-      </div>
-
-      {/* Contacts List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {availableContacts.map((contact) => {
-          const isInvited = invitedUsers.includes(contact._id);
-          
-          return (
-            <div
-              key={contact._id}
-              className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors group"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
-                  {contact.username[0].toUpperCase()}
-                </div>
-                <span className="text-white text-sm font-medium">
-                  {contact.username}
-                </span>
-              </div>
-
-              {/* Invite / Invited Button */}
+      {showInviteModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-70 flex justify-end">
+          <div className="bg-[#0B0E11] w-full max-w-sm h-full border-l border-white/10 flex flex-col animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="p-8 border-b border-white/5 flex justify-between items-center">
+              <h3 className="text-white text-xl font-bold">Add Participant</h3>
               <button
-                disabled={isInvited}
                 onClick={() => {
-                  onInvite(contact._id);
-                  setInvitedUsers((prev) => [...prev, contact._id]);
-                  // Note: Hum Modal close nahi kar rahe taaki user multiple logo ko invite kar sake
-                  // Agar aap chahte hain close ho jaye toh niche wali line uncomment karein:
-                  // setTimeout(() => setShowInviteModal(false), 800);
+                  setShowInviteModal(false);
+                  setSearchTerm(""); // Modal band hote hi search clear kar dein
                 }}
-                className={`text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest transition-all cursor-pointer active:scale-95 ${
-                  isInvited 
-                    ? "bg-green-600/20 text-green-500 border border-green-500/50 cursor-default" 
-                    : "bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20"
-                }`}
+                className="p-2 hover:bg-white/10 rounded-full transition-colors cursor-pointer text-gray-400 hover:text-white"
               >
-                {isInvited ? "Invited" : "Invite"}
+                <X size={24} />
               </button>
             </div>
-          );
-        })}
-      </div>
-    </div>
-  </div>
-)}
+
+            {/* 🔍 Search Input Section */}
+            <div className="px-6 py-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search contacts..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                />
+              </div>
+            </div>
+
+            {/* Contacts List */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {availableContacts
+                .filter((contact) =>
+                  contact.username
+                    .toLowerCase()
+                    .includes(searchTerm.toLowerCase()),
+                )
+                .map((contact) => {
+                  const isInvited = invitedUsers.includes(contact._id);
+
+                  return (
+                    <div
+                      key={contact._id}
+                      className="flex items-center justify-between p-4 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold">
+                          {contact.username[0].toUpperCase()}
+                        </div>
+                        <span className="text-white text-sm font-medium">
+                          {contact.username}
+                        </span>
+                      </div>
+
+                      <button
+                        disabled={isInvited}
+                        onClick={() => {
+                          onInvite(contact._id);
+                          setInvitedUsers((prev) => [...prev, contact._id]);
+                        }}
+                        className={`text-[10px] font-bold px-4 py-2 rounded-lg uppercase tracking-widest transition-all cursor-pointer active:scale-95 ${
+                          isInvited
+                            ? "bg-green-600/20 text-green-500 border border-green-500/50 cursor-default"
+                            : "bg-blue-600 text-white hover:bg-blue-500 shadow-lg shadow-blue-600/20"
+                        }`}
+                      >
+                        {isInvited ? "Invited" : "Invite"}
+                      </button>
+                    </div>
+                  );
+                })}
+
+              {/* Empty State: Agar koi match na mile */}
+              {availableContacts.filter((c) =>
+                c.username.toLowerCase().includes(searchTerm.toLowerCase()),
+              ).length === 0 && (
+                <div className="text-center py-10 text-gray-500 text-sm">
+                  No contacts found for "{searchTerm}"
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
