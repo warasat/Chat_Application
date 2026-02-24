@@ -128,7 +128,6 @@ const ChatPage = ({ chatId, currentUserId, receiver }: ChatPageProps) => {
 
   // --- Audio Call Hook ---
   const {
-    socket,
     inCall,
     isCaller,
     incomingCall,
